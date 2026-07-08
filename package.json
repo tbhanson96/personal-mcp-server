@@ -1,0 +1,33 @@
+{
+  "name": "personal-mcp-server",
+  "version": "0.1.0",
+  "description": "Personal MCP server for local services",
+  "author": "Tim Hanson",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "docker:build": "npm run build && docker build -t personal-mcp-server .",
+    "docker:tag": "docker image tag personal-mcp-server:latest ghcr.io/tbhanson96/personal-mcp-server:latest",
+    "docker:push": "docker image push ghcr.io/tbhanson96/personal-mcp-server:latest",
+    "package": "npm run docker:build",
+    "deploy": "npm run docker:tag && npm run docker:push"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "express": "5.2.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "25.6.0",
+    "rimraf": "6.1.3",
+    "tsx": "^4.23.0",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

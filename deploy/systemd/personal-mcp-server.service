@@ -1,0 +1,24 @@
+[Unit]
+Description=Personal MCP server container
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/personal-mcp-server/personal-mcp-server.service.env
+ExecStartPre=-/usr/bin/docker rm -f personal-mcp-server
+ExecStartPre=/usr/bin/docker pull ${PERSONAL_MCP_IMAGE}
+ExecStart=/usr/bin/docker run \
+  --name personal-mcp-server \
+  --rm \
+  --add-host host.docker.internal:host-gateway \
+  --publish ${PERSONAL_MCP_PORT}:3000 \
+  --env-file %h/.config/personal-mcp-server/personal-mcp-server.container.env \
+  ${PERSONAL_MCP_IMAGE}
+ExecStop=/usr/bin/docker stop -t 30 personal-mcp-server
+ExecStopPost=-/usr/bin/docker rm -f personal-mcp-server
+Restart=always
+RestartSec=10
+TimeoutStopSec=45
+
+[Install]
+WantedBy=default.target
