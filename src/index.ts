@@ -2,29 +2,16 @@ import express, { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpServer } from './server.js';
 import { loadConfig } from './config.js';
+import { requireMcpAuth } from './auth.js';
 
 const config = loadConfig();
 const app = express();
-
-app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_request: Request, response: Response) => {
   response.json({ ok: true });
 });
 
-app.post('/mcp', async (request: Request, response: Response) => {
-  if (!isAuthorized(request)) {
-    response.status(401).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32001,
-        message: 'Unauthorized.',
-      },
-      id: null,
-    });
-    return;
-  }
-
+app.post('/mcp', requireMcpAuth(config.mcpApiKey), express.json({ limit: '2mb' }), async (request: Request, response: Response) => {
   const server = createMcpServer(config);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -51,7 +38,7 @@ app.post('/mcp', async (request: Request, response: Response) => {
   }
 });
 
-app.all('/mcp', (_request: Request, response: Response) => {
+app.all('/mcp', requireMcpAuth(config.mcpApiKey), (_request: Request, response: Response) => {
   response.status(405).json({
     jsonrpc: '2.0',
     error: {
@@ -77,11 +64,4 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
       process.exit(0);
     });
   });
-}
-
-function isAuthorized(request: Request): boolean {
-  const header = request.header('authorization');
-  const apiKey = request.header('x-api-key');
-
-  return header === `Bearer ${config.mcpApiKey}` || apiKey === config.mcpApiKey;
 }
