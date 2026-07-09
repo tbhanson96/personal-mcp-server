@@ -2,7 +2,16 @@ import express, { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpServer } from './server.js';
 import { loadConfig } from './config.js';
-import { requireMcpAuth } from './auth.js';
+import {
+  authorizationServerMetadata,
+  createAuthorizationCode,
+  exchangeAuthorizationCode,
+  protectedResourceMetadata,
+  redirectWithCode,
+  registerOAuthClient,
+  renderAuthorizePage,
+  requireMcpAuth,
+} from './auth.js';
 
 const config = loadConfig();
 const app = express();
@@ -11,7 +20,56 @@ app.get('/health', (_request: Request, response: Response) => {
   response.json({ ok: true });
 });
 
-app.post('/mcp', requireMcpAuth(config.mcpApiKey), express.json({ limit: '2mb' }), async (request: Request, response: Response) => {
+app.get('/.well-known/oauth-protected-resource', (_request: Request, response: Response) => {
+  response.json(protectedResourceMetadata(config));
+});
+
+app.get('/.well-known/oauth-authorization-server', (_request: Request, response: Response) => {
+  response.json(authorizationServerMetadata(config));
+});
+
+app.get('/.well-known/openid-configuration', (_request: Request, response: Response) => {
+  response.json(authorizationServerMetadata(config));
+});
+
+app.post('/oauth/register', express.json({ limit: '64kb' }), (request: Request, response: Response) => {
+  try {
+    const client = registerOAuthClient(request.body || {});
+    response.status(201).json({
+      client_id: client.clientId,
+      client_name: client.clientName,
+      redirect_uris: client.redirectUris,
+      grant_types: ['authorization_code'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    });
+  } catch (error) {
+    response.status(400).json(oauthError('invalid_client_metadata', error));
+  }
+});
+
+app.get('/oauth/authorize', (request: Request, response: Response) => {
+  response.type('html').send(renderAuthorizePage(request.query, config));
+});
+
+app.post('/oauth/authorize', express.urlencoded({ extended: false, limit: '64kb' }), (request: Request, response: Response) => {
+  try {
+    const code = createAuthorizationCode(request.body || {}, config);
+    response.redirect(302, redirectWithCode(request.body || {}, code));
+  } catch (error) {
+    response.status(400).json(oauthError('invalid_request', error));
+  }
+});
+
+app.post('/oauth/token', express.urlencoded({ extended: false, limit: '64kb' }), (request: Request, response: Response) => {
+  try {
+    response.json(exchangeAuthorizationCode(request.body || {}, config));
+  } catch (error) {
+    response.status(400).json(oauthError('invalid_grant', error));
+  }
+});
+
+app.post('/mcp', requireMcpAuth(config), express.json({ limit: '2mb' }), async (request: Request, response: Response) => {
   const server = createMcpServer(config);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -38,7 +96,7 @@ app.post('/mcp', requireMcpAuth(config.mcpApiKey), express.json({ limit: '2mb' }
   }
 });
 
-app.all('/mcp', requireMcpAuth(config.mcpApiKey), (_request: Request, response: Response) => {
+app.all('/mcp', requireMcpAuth(config), (_request: Request, response: Response) => {
   response.status(405).json({
     jsonrpc: '2.0',
     error: {
@@ -64,4 +122,11 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
       process.exit(0);
     });
   });
+}
+
+function oauthError(code: string, error: unknown) {
+  return {
+    error: code,
+    error_description: error instanceof Error ? error.message : 'OAuth request failed',
+  };
 }

@@ -43,7 +43,10 @@ export function createMcpServer(config: AppConfig): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: tools.map((definition) => definition.tool),
+    tools: tools.map((definition) => ({
+      ...definition.tool,
+      securitySchemes: [{ type: 'oauth2', scopes: ['mcp:read'] }],
+    })),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
