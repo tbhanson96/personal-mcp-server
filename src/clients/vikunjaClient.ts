@@ -14,4 +14,16 @@ export class VikunjaClient {
       s: options.search,
     });
   }
+
+  getTask(taskId: number): Promise<Record<string, unknown>> {
+    return this.http.get(`/api/v1/tasks/${taskId}`);
+  }
+
+  createTask(projectId: number, task: Record<string, unknown>): Promise<unknown> {
+    return this.http.put(`/api/v1/projects/${projectId}/tasks`, task);
+  }
+
+  updateTask(taskId: number, updates: Record<string, unknown>): Promise<unknown> {
+    return this.http.post(`/api/v1/tasks/${taskId}`, updates);
+  }
 }

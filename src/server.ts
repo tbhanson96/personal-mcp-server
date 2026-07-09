@@ -35,8 +35,8 @@ export function createMcpServer(config: AppConfig): Server {
         tools: {},
       },
       instructions: [
-        'Use these tools to inspect personal local services.',
-        'The initial exposed tool set is intentionally read-only.',
+        'Use these tools to inspect and operate personal local services.',
+        'Write tools are exposed as bounded semantic operations rather than raw API passthroughs.',
         'If a service is not configured, its tools return a configuration error instead of failing registration.',
       ].join(' '),
     },

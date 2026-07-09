@@ -16,6 +16,7 @@ describe('createToolDefinitions', () => {
       'home_assistant_get_config',
       'home_assistant_get_states',
       'home_assistant_get_state',
+      'home_assistant_control_entity',
       'homeserver_list_files',
       'homeserver_list_ebooks',
       'homeserver_search_ebooks',
@@ -24,8 +25,14 @@ describe('createToolDefinitions', () => {
       'homeserver_add_personal_media_download',
       'mealie_search_recipes',
       'mealie_get_recipe',
+      'mealie_create_recipe_from_url',
+      'mealie_list_shopping_lists',
+      'mealie_add_shopping_item',
       'vikunja_list_projects',
       'vikunja_list_tasks',
+      'vikunja_create_task',
+      'vikunja_update_task',
+      'vikunja_set_task_done',
     ]);
   });
 

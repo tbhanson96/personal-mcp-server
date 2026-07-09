@@ -14,4 +14,11 @@ export class HomeAssistantClient {
   getState(entityId: string): Promise<unknown> {
     return this.http.get(`/api/states/${encodeURIComponent(entityId)}`);
   }
+
+  controlEntity(entityId: string, action: 'turn_on' | 'turn_off' | 'toggle'): Promise<unknown> {
+    const domain = entityId.split('.')[0];
+    return this.http.post(`/api/services/${encodeURIComponent(domain)}/${action}`, {
+      entity_id: entityId,
+    });
+  }
 }
