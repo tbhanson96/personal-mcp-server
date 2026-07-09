@@ -15,7 +15,7 @@ import { vikunjaTools } from './tools/vikunja.js';
 export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
   return [
     ...homeAssistantTools(config.homeAssistant),
-    ...homeserverTools(config.homeserver),
+    ...homeserverTools(config.homeserver, config.mcpApiKey),
     ...mealieTools(config.mealie),
     ...vikunjaTools(config.vikunja),
   ];

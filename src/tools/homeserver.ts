@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { ServiceConfig } from '../config.js';
 import { HomeserverClient } from '../clients/homeserverClient.js';
 import { HttpClient } from '../http.js';
+import { decryptMediaDownloadLink, encryptMediaDownloadLink } from '../mediaDownloadToken.js';
 import { EmptyArgsSchema, parseArgs, zodToJsonSchemaObject } from '../schemas/common.js';
 import { disabledResult, jsonResult, ToolDefinition } from './types.js';
 
@@ -25,11 +27,11 @@ const SearchMediaDownloadsArgsSchema = z.object({
 });
 
 const AddMediaDownloadArgsSchema = z.object({
-  magnet: z.string().min(1),
+  downloadToken: z.string().min(1),
   category: MediaDownloadCategorySchema,
 });
 
-export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
+export function homeserverTools(config?: ServiceConfig, mediaDownloadSecret = ''): ToolDefinition[] {
   const client = config ? new HomeserverClient(new HttpClient(config, config.token ? 'x-api-key' : 'Authorization')) : undefined;
 
   return [
@@ -104,24 +106,64 @@ export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
       },
       execute: async (args) => {
         const parsed = parseArgs(SearchMediaDownloadsArgsSchema, args);
-        return client ? jsonResult(await client.searchTorrents(parsed.search, parsed.category)) : disabledResult('Homeserver');
+        if (!client) {
+          return disabledResult('Homeserver');
+        }
+
+        const results = await client.searchTorrents(parsed.search, parsed.category);
+        return jsonResult(encryptMediaDownloadResults(results, mediaDownloadSecret));
       },
     },
     {
       tool: {
         name: 'homeserver_add_personal_media_download',
         title: 'Add Personal Media Download',
-        description: 'Add a magnet link to the personal movies or tv media library.',
+        description: 'Add a selected personal media download to the movies or tv media library.',
         inputSchema: zodToJsonSchemaObject({
-          magnet: { type: 'string', minLength: 1 },
+          downloadToken: { type: 'string', minLength: 1 },
           category: { type: 'string', enum: ['movies', 'tv'] },
-        }, ['magnet', 'category']),
+        }, ['downloadToken', 'category']),
         annotations: { readOnlyHint: false, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(AddMediaDownloadArgsSchema, args);
-        return client ? jsonResult(await client.addTorrent(parsed.magnet, parsed.category)) : disabledResult('Homeserver');
+        if (!client) {
+          return disabledResult('Homeserver');
+        }
+
+        return jsonResult(await client.addTorrent(decryptDownloadToken(parsed.downloadToken, mediaDownloadSecret), parsed.category));
       },
     },
   ];
+}
+
+function encryptMediaDownloadResults(results: unknown, secret: string): unknown {
+  if (!Array.isArray(results)) {
+    return results;
+  }
+
+  return results.map((result) => {
+    if (!isObject(result) || typeof result.download !== 'string') {
+      return result;
+    }
+
+    const { download, ...rest } = result;
+    return {
+      ...rest,
+      downloadToken: encryptMediaDownloadLink(download, secret),
+    };
+  });
+}
+
+function decryptDownloadToken(downloadToken: string, secret: string): string {
+  try {
+    return decryptMediaDownloadLink(downloadToken, secret);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid personal media download token';
+    throw new McpError(ErrorCode.InvalidParams, message);
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
