@@ -17,16 +17,16 @@ const SearchArgsSchema = z.object({
   search: z.string().min(1),
 });
 
-const TorrentCategorySchema = z.enum(['movies', 'tv']);
+const MediaDownloadCategorySchema = z.enum(['movies', 'tv']);
 
-const SearchTorrentsArgsSchema = z.object({
+const SearchMediaDownloadsArgsSchema = z.object({
   search: z.string().min(1),
-  category: TorrentCategorySchema,
+  category: MediaDownloadCategorySchema,
 });
 
-const AddTorrentArgsSchema = z.object({
+const AddMediaDownloadArgsSchema = z.object({
   magnet: z.string().min(1),
-  category: TorrentCategorySchema,
+  category: MediaDownloadCategorySchema,
 });
 
 export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
@@ -93,9 +93,9 @@ export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
     },
     {
       tool: {
-        name: 'homeserver_search_torrents',
-        title: 'Search Homeserver Torrents',
-        description: 'Search for torrents by text and media category.',
+        name: 'homeserver_search_personal_media_downloads',
+        title: 'Search Personal Media Downloads',
+        description: 'Search for personal media downloads by text and media category.',
         inputSchema: zodToJsonSchemaObject({
           search: { type: 'string', minLength: 1 },
           category: { type: 'string', enum: ['movies', 'tv'] },
@@ -103,15 +103,15 @@ export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
         annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
-        const parsed = parseArgs(SearchTorrentsArgsSchema, args);
+        const parsed = parseArgs(SearchMediaDownloadsArgsSchema, args);
         return client ? jsonResult(await client.searchTorrents(parsed.search, parsed.category)) : disabledResult('Homeserver');
       },
     },
     {
       tool: {
-        name: 'homeserver_add_torrent',
-        title: 'Add Homeserver Torrent',
-        description: 'Add a torrent magnet link to Transmission in the movies or tv library.',
+        name: 'homeserver_add_personal_media_download',
+        title: 'Add Personal Media Download',
+        description: 'Add a magnet link to the personal movies or tv media library.',
         inputSchema: zodToJsonSchemaObject({
           magnet: { type: 'string', minLength: 1 },
           category: { type: 'string', enum: ['movies', 'tv'] },
@@ -119,7 +119,7 @@ export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
         annotations: { readOnlyHint: false, destructiveHint: false },
       },
       execute: async (args) => {
-        const parsed = parseArgs(AddTorrentArgsSchema, args);
+        const parsed = parseArgs(AddMediaDownloadArgsSchema, args);
         return client ? jsonResult(await client.addTorrent(parsed.magnet, parsed.category)) : disabledResult('Homeserver');
       },
     },
