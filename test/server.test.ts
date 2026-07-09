@@ -20,6 +20,8 @@ describe('createToolDefinitions', () => {
       'homeserver_list_ebooks',
       'homeserver_search_ebooks',
       'homeserver_get_health_catalog',
+      'homeserver_search_torrents',
+      'homeserver_add_torrent',
       'mealie_search_recipes',
       'mealie_get_recipe',
       'vikunja_list_projects',

@@ -18,4 +18,12 @@ export class HomeserverClient {
   getHealthCatalog(): Promise<unknown> {
     return this.http.get('/api/health/catalog');
   }
+
+  searchTorrents(search: string, category: 'movies' | 'tv'): Promise<unknown> {
+    return this.http.get('/api/torrent', { search, category });
+  }
+
+  addTorrent(magnet: string, category: 'movies' | 'tv'): Promise<unknown> {
+    return this.http.post('/api/torrent', { magnet, category });
+  }
 }
