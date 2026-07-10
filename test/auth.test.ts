@@ -37,7 +37,7 @@ describe('isAuthorized', () => {
     expect(isAuthorized(undefined, 'secretx', config)).toBe(false);
   });
 
-  it('accepts OAuth access tokens minted for the MCP resource with read and write scopes', () => {
+  it('accepts OAuth access tokens minted for the MCP resource with the tools scope', () => {
     const verifier = 'oauth-test-verifier';
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const redirectUri = 'https://chatgpt.com/connector/oauth/test';
@@ -50,7 +50,7 @@ describe('isAuthorized', () => {
       code_challenge: challenge,
       code_challenge_method: 'S256',
       resource: config.publicUrl,
-      scope: 'mcp:read mcp:write',
+      scope: 'mcp:tools',
     }, config);
 
     const tokenResponse = exchangeAuthorizationCode({
@@ -63,16 +63,16 @@ describe('isAuthorized', () => {
     }, config);
 
     expect(tokenResponse.access_token).toBeTruthy();
-    expect(tokenResponse.scope).toBe('mcp:read mcp:write');
+    expect(tokenResponse.scope).toBe('mcp:tools');
     expect(isAuthorized(`Bearer ${tokenResponse.access_token}`, undefined, config)).toBe(true);
   });
 
-  it('advertises read and write scopes in OAuth metadata', () => {
-    expect(protectedResourceMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:write']);
-    expect(authorizationServerMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:write']);
+  it('advertises the neutral tools scope in OAuth metadata', () => {
+    expect(protectedResourceMetadata(config).scopes_supported).toEqual(['mcp:tools']);
+    expect(authorizationServerMetadata(config).scopes_supported).toEqual(['mcp:tools']);
   });
 
-  it('grants write scope even when the client only requests read scope', () => {
+  it('grants the tools scope when the client omits scope', () => {
     const verifier = 'oauth-test-verifier-read-only';
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const redirectUri = 'https://chatgpt.com/connector/oauth/test';
@@ -84,7 +84,6 @@ describe('isAuthorized', () => {
       code_challenge: challenge,
       code_challenge_method: 'S256',
       resource: config.publicUrl,
-      scope: 'mcp:read',
     }, config);
 
     const tokenResponse = exchangeAuthorizationCode({
@@ -96,7 +95,7 @@ describe('isAuthorized', () => {
       resource: config.publicUrl,
     }, config);
 
-    expect(tokenResponse.scope).toBe('mcp:read mcp:write');
+    expect(tokenResponse.scope).toBe('mcp:tools');
   });
 
   it('rejects unsupported OAuth scopes', () => {

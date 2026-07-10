@@ -65,5 +65,5 @@ export function createMcpServer(config: AppConfig): Server {
 }
 
 export function securityScopesForTool(definition: ToolDefinition): string[] {
-  return ['mcp:read'];
+  return ['mcp:tools'];
 }

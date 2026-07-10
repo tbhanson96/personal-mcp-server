@@ -20,8 +20,8 @@ export type RegisteredClient = {
 
 const authorizationCodes = new Map<string, AuthorizationCode>();
 const registeredClients = new Map<string, RegisteredClient>();
-const supportedScopes = ['mcp:read', 'mcp:write'] as const;
-const defaultScope = supportedScopes.join(' ');
+const supportedScopes = ['mcp:tools'] as const;
+const defaultScope = supportedScopes[0];
 
 export function requireMcpAuth(config: AppConfig) {
   return (request: Request, response: Response, next: NextFunction) => {
