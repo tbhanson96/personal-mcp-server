@@ -50,4 +50,13 @@ describe('createToolDefinitions', () => {
       expect(content.text).toContain('Vikunja is not configured');
     }
   });
+
+  it('exposes recurring task fields without exposing repeat-as-new toggle', () => {
+    const tool = createToolDefinitions(baseConfig).find((definition) => definition.tool.name === 'vikunja_create_task');
+    const properties = tool?.tool.inputSchema.properties || {};
+
+    expect(properties).toHaveProperty('repeat_every_seconds');
+    expect(properties).toHaveProperty('repeat_mode');
+    expect(properties).not.toHaveProperty('repeat_as_new');
+  });
 });
