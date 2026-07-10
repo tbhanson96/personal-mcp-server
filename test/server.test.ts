@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createToolDefinitions } from '../src/server.js';
+import { createToolDefinitions, securityScopesForTool } from '../src/server.js';
 import { AppConfig } from '../src/config.js';
 
 const baseConfig: AppConfig = {
@@ -58,5 +58,14 @@ describe('createToolDefinitions', () => {
     expect(properties).toHaveProperty('repeat_every_seconds');
     expect(properties).toHaveProperty('repeat_mode');
     expect(properties).not.toHaveProperty('repeat_as_new');
+  });
+
+  it('uses write OAuth scope for write tools and read scope for read-only tools', () => {
+    const tools = createToolDefinitions(baseConfig);
+    const listTasks = tools.find((definition) => definition.tool.name === 'vikunja_list_tasks');
+    const createTask = tools.find((definition) => definition.tool.name === 'vikunja_create_task');
+
+    expect(listTasks && securityScopesForTool(listTasks)).toEqual(['mcp:read']);
+    expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:write']);
   });
 });

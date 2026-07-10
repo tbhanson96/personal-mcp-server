@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { AppConfig } from '../src/config.js';
-import { createAuthorizationCode, exchangeAuthorizationCode, isAuthorized } from '../src/auth.js';
+import {
+  authorizationServerMetadata,
+  createAuthorizationCode,
+  exchangeAuthorizationCode,
+  isAuthorized,
+  protectedResourceMetadata,
+} from '../src/auth.js';
 import { createHash } from 'crypto';
 
 const config: AppConfig = {
@@ -31,7 +37,7 @@ describe('isAuthorized', () => {
     expect(isAuthorized(undefined, 'secretx', config)).toBe(false);
   });
 
-  it('accepts OAuth access tokens minted for the MCP resource', () => {
+  it('accepts OAuth access tokens minted for the MCP resource with read and write scopes', () => {
     const verifier = 'oauth-test-verifier';
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const redirectUri = 'https://chatgpt.com/connector/oauth/test';
@@ -44,7 +50,7 @@ describe('isAuthorized', () => {
       code_challenge: challenge,
       code_challenge_method: 'S256',
       resource: config.publicUrl,
-      scope: 'mcp:read',
+      scope: 'mcp:read mcp:write',
     }, config);
 
     const tokenResponse = exchangeAuthorizationCode({
@@ -57,6 +63,28 @@ describe('isAuthorized', () => {
     }, config);
 
     expect(tokenResponse.access_token).toBeTruthy();
+    expect(tokenResponse.scope).toBe('mcp:read mcp:write');
     expect(isAuthorized(`Bearer ${tokenResponse.access_token}`, undefined, config)).toBe(true);
+  });
+
+  it('advertises read and write scopes in OAuth metadata', () => {
+    expect(protectedResourceMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:write']);
+    expect(authorizationServerMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:write']);
+  });
+
+  it('rejects unsupported OAuth scopes', () => {
+    const verifier = 'oauth-test-verifier';
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+
+    expect(() => createAuthorizationCode({
+      login_code: config.oauth.loginCode,
+      response_type: 'code',
+      client_id: 'chatgpt',
+      redirect_uri: 'https://chatgpt.com/connector/oauth/test',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      resource: config.publicUrl,
+      scope: 'mcp:admin',
+    }, config)).toThrow('Unsupported OAuth scope');
   });
 });

@@ -45,7 +45,10 @@ export function createMcpServer(config: AppConfig): Server {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map((definition) => ({
       ...definition.tool,
-      securitySchemes: [{ type: 'oauth2', scopes: ['mcp:read'] }],
+      securitySchemes: [{
+        type: 'oauth2',
+        scopes: securityScopesForTool(definition),
+      }],
     })),
   }));
 
@@ -59,4 +62,8 @@ export function createMcpServer(config: AppConfig): Server {
   });
 
   return server;
+}
+
+export function securityScopesForTool(definition: ToolDefinition): string[] {
+  return [definition.tool.annotations?.readOnlyHint === false ? 'mcp:write' : 'mcp:read'];
 }

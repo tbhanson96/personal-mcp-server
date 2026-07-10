@@ -20,6 +20,8 @@ export type RegisteredClient = {
 
 const authorizationCodes = new Map<string, AuthorizationCode>();
 const registeredClients = new Map<string, RegisteredClient>();
+const supportedScopes = ['mcp:read', 'mcp:write'] as const;
+const defaultScope = supportedScopes.join(' ');
 
 export function requireMcpAuth(config: AppConfig) {
   return (request: Request, response: Response, next: NextFunction) => {
@@ -78,7 +80,7 @@ export function protectedResourceMetadata(config: AppConfig) {
   return {
     resource: config.publicUrl,
     authorization_servers: [config.oauth.issuer],
-    scopes_supported: ['mcp:read'],
+    scopes_supported: supportedScopes,
     resource_documentation: `${config.oauth.issuer}/mcp`,
     token_endpoint_auth_methods_supported: ['none'],
   };
@@ -94,7 +96,7 @@ export function authorizationServerMetadata(config: AppConfig) {
     grant_types_supported: ['authorization_code'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: ['mcp:read'],
+    scopes_supported: supportedScopes,
   };
 }
 
@@ -130,7 +132,7 @@ export function renderAuthorizePage(query: Record<string, unknown>, config: AppC
 <body>
   <main>
     <h1>Authorize Personal MCP Server</h1>
-    <p>Enter the MCP OAuth login code to let this client access read-only personal tools.</p>
+    <p>Enter the MCP OAuth login code to let this client access personal tools.</p>
     <form method="post" action="/oauth/authorize">
       ${hiddenFields}
       <label>
@@ -156,7 +158,7 @@ export function createAuthorizationCode(body: Record<string, unknown>, config: A
   const codeChallenge = stringParam(body.code_challenge);
   const codeChallengeMethod = stringParam(body.code_challenge_method);
   const resource = stringParam(body.resource) || config.publicUrl;
-  const scope = stringParam(body.scope) || 'mcp:read';
+  const scope = normalizeScope(stringParam(body.scope) || defaultScope);
 
   if (responseType !== 'code') {
     throw new Error('Unsupported response_type');
@@ -238,7 +240,7 @@ export function redirectWithCode(body: Record<string, unknown>, code: string): s
 }
 
 export function wwwAuthenticateHeader(config: AppConfig): string {
-  return `Bearer resource_metadata="${config.oauth.issuer}/.well-known/oauth-protected-resource", scope="mcp:read"`;
+  return `Bearer resource_metadata="${config.oauth.issuer}/.well-known/oauth-protected-resource", scope="${defaultScope}"`;
 }
 
 function isRedirectUriAllowed(clientId: string, redirectUri: string): boolean {
@@ -281,7 +283,22 @@ function isValidOAuthAccessToken(
     typeof payload.exp === 'number' &&
     payload.exp > now &&
     typeof payload.scope === 'string' &&
-    payload.scope.split(/\s+/).includes('mcp:read');
+    payload.scope.split(/\s+/).some((scope) => supportedScopes.includes(scope as (typeof supportedScopes)[number]));
+}
+
+function normalizeScope(scope: string): string {
+  const requestedScopes = scope.split(/\s+/).filter(Boolean);
+  if (requestedScopes.length === 0) {
+    return defaultScope;
+  }
+
+  const unsupportedScopes = requestedScopes.filter((requestedScope) =>
+    !supportedScopes.includes(requestedScope as (typeof supportedScopes)[number]));
+  if (unsupportedScopes.length > 0) {
+    throw new Error(`Unsupported OAuth scope: ${unsupportedScopes.join(' ')}`);
+  }
+
+  return Array.from(new Set(requestedScopes)).join(' ');
 }
 
 function signAccessToken(payload: Record<string, unknown>, secret: string): string {
