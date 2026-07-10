@@ -80,7 +80,7 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
           },
           action: { type: 'string', enum: ['turn_on', 'turn_off', 'toggle'] },
         }, ['entity_id', 'action']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(ControlEntityArgsSchema, args);

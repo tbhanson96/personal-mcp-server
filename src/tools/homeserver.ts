@@ -123,7 +123,7 @@ export function homeserverTools(config?: ServiceConfig, mediaDownloadSecret = ''
           downloadToken: { type: 'string', minLength: 1 },
           category: { type: 'string', enum: ['movies', 'tv'] },
         }, ['downloadToken', 'category']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(AddMediaDownloadArgsSchema, args);

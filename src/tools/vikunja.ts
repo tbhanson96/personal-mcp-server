@@ -116,7 +116,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
             description: 'How recurrence advances. Defaults to after_due_date when repeat_every_seconds is provided.',
           },
         }, ['project_id', 'title']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(CreateTaskArgsSchema, args);
@@ -145,7 +145,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
             description: 'How recurrence advances. Defaults to after_due_date when repeat_every_seconds is provided.',
           },
         }, ['task_id']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(UpdateTaskArgsSchema, args);
@@ -169,7 +169,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
           task_id: { type: 'number', minimum: 1 },
           done: { type: 'boolean', default: true },
         }, ['task_id']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(SetTaskDoneArgsSchema, args);

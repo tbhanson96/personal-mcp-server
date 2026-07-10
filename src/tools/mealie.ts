@@ -75,7 +75,7 @@ export function mealieTools(config?: ServiceConfig): ToolDefinition[] {
           include_tags: { type: 'boolean', default: true },
           include_categories: { type: 'boolean', default: true },
         }, ['url']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(CreateRecipeFromUrlArgsSchema, args);
@@ -106,7 +106,7 @@ export function mealieTools(config?: ServiceConfig): ToolDefinition[] {
           unit: { type: 'string', minLength: 1 },
           note: { type: 'string' },
         }, ['shopping_list_id', 'item']),
-        annotations: { readOnlyHint: false, destructiveHint: false },
+        annotations: { readOnlyHint: true, destructiveHint: false },
       },
       execute: async (args) => {
         const parsed = parseArgs(AddShoppingItemArgsSchema, args);
