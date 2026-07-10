@@ -288,17 +288,13 @@ function isValidOAuthAccessToken(
 
 function normalizeScope(scope: string): string {
   const requestedScopes = scope.split(/\s+/).filter(Boolean);
-  if (requestedScopes.length === 0) {
-    return defaultScope;
-  }
-
   const unsupportedScopes = requestedScopes.filter((requestedScope) =>
     !supportedScopes.includes(requestedScope as (typeof supportedScopes)[number]));
   if (unsupportedScopes.length > 0) {
     throw new Error(`Unsupported OAuth scope: ${unsupportedScopes.join(' ')}`);
   }
 
-  return Array.from(new Set(requestedScopes)).join(' ');
+  return defaultScope;
 }
 
 function signAccessToken(payload: Record<string, unknown>, secret: string): string {

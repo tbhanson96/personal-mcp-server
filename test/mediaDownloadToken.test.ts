@@ -41,7 +41,12 @@ describe('media download tokens', () => {
 
   it('rejects tampered tokens', () => {
     const token = encryptMediaDownloadLink('magnet:?xt=urn:btih:1234567890abcdef', 'server-secret');
-    const tamperedToken = `${token.slice(0, -1)}A`;
+    const parts = token.split('.');
+    const ciphertext = parts[3];
+    const tamperIndex = Math.floor(ciphertext.length / 2);
+    const replacement = ciphertext[tamperIndex] === 'A' ? 'B' : 'A';
+    parts[3] = `${ciphertext.slice(0, tamperIndex)}${replacement}${ciphertext.slice(tamperIndex + 1)}`;
+    const tamperedToken = parts.join('.');
 
     expect(() => decryptMediaDownloadLink(tamperedToken, 'server-secret')).toThrow(/Invalid personal media download token/);
   });

@@ -72,6 +72,33 @@ describe('isAuthorized', () => {
     expect(authorizationServerMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:write']);
   });
 
+  it('grants write scope even when the client only requests read scope', () => {
+    const verifier = 'oauth-test-verifier-read-only';
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const redirectUri = 'https://chatgpt.com/connector/oauth/test';
+    const code = createAuthorizationCode({
+      login_code: config.oauth.loginCode,
+      response_type: 'code',
+      client_id: 'chatgpt',
+      redirect_uri: redirectUri,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      resource: config.publicUrl,
+      scope: 'mcp:read',
+    }, config);
+
+    const tokenResponse = exchangeAuthorizationCode({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      client_id: 'chatgpt',
+      code_verifier: verifier,
+      resource: config.publicUrl,
+    }, config);
+
+    expect(tokenResponse.scope).toBe('mcp:read mcp:write');
+  });
+
   it('rejects unsupported OAuth scopes', () => {
     const verifier = 'oauth-test-verifier';
     const challenge = createHash('sha256').update(verifier).digest('base64url');
