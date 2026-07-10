@@ -12,9 +12,24 @@ import {
   renderAuthorizePage,
   requireMcpAuth,
 } from './auth.js';
+import { logError, logInfo, requestLogDetails } from './logging.js';
 
 const config = loadConfig();
 const app = express();
+
+app.use((request: Request, response: Response, next) => {
+  const startedAt = Date.now();
+
+  response.on('finish', () => {
+    logInfo('http.request', {
+      ...requestLogDetails(request),
+      statusCode: response.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  next();
+});
 
 app.get('/health', (_request: Request, response: Response) => {
   response.json({ ok: true });
@@ -79,7 +94,10 @@ app.post('/mcp', requireMcpAuth(config), express.json({ limit: '2mb' }), async (
     await server.connect(transport);
     await transport.handleRequest(request, response, request.body);
   } catch (error) {
-    console.error('MCP request failed:', error);
+    logError('mcp.request.failed', {
+      ...requestLogDetails(request),
+      error: error instanceof Error ? error.message : 'Unknown MCP request failure',
+    });
     if (!response.headersSent) {
       response.status(500).json({
         jsonrpc: '2.0',
@@ -108,14 +126,19 @@ app.all('/mcp', requireMcpAuth(config), (_request: Request, response: Response) 
 });
 
 const httpServer = app.listen(config.port, config.bindAddress, () => {
-  console.log(`personal-mcp-server listening on ${config.bindAddress}:${config.port}`);
+  logInfo('server.started', {
+    bindAddress: config.bindAddress,
+    port: config.port,
+  });
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     httpServer.close((error) => {
       if (error) {
-        console.error('Failed to close HTTP server:', error);
+        logError('server.close.failed', {
+          error: error.message,
+        });
         process.exit(1);
       }
 

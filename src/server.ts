@@ -7,6 +7,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { AppConfig } from './config.js';
 import { MCP_READ_SCOPE } from './auth.js';
+import { logError, logInfo, sanitizeForLog } from './logging.js';
 import { homeAssistantTools } from './tools/homeAssistant.js';
 import { homeserverTools } from './tools/homeserver.js';
 import { mealieTools } from './tools/mealie.js';
@@ -43,23 +44,55 @@ export function createMcpServer(config: AppConfig): Server {
     },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: tools.map((definition) => ({
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const returnedTools = tools.map((definition) => ({
       ...definition.tool,
       securitySchemes: [{
         type: 'oauth2',
         scopes: securityScopesForTool(definition),
       }],
-    })),
-  }));
+    }));
+
+    logInfo('mcp.tools.list.returned', {
+      count: returnedTools.length,
+      tools: returnedTools.map((tool) => ({
+        name: tool.name,
+        title: tool.title,
+        description: tool.description,
+        annotations: tool.annotations,
+        securitySchemes: tool.securitySchemes,
+        inputSchema: tool.inputSchema,
+      })),
+    });
+
+    return {
+      tools: returnedTools,
+    };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const definition = toolsByName.get(request.params.name);
     if (!definition) {
+      logError('mcp.tool.call.unknown', {
+        toolName: request.params.name,
+      });
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
     }
 
-    return definition.execute(request.params.arguments || {});
+    logInfo('mcp.tool.call.started', {
+      toolName: request.params.name,
+      arguments: sanitizeForLog(request.params.arguments || {}),
+    });
+
+    const result = await definition.execute(request.params.arguments || {});
+
+    logInfo('mcp.tool.call.returned', {
+      toolName: request.params.name,
+      isError: result.isError,
+      result: sanitizeForLog(result),
+    });
+
+    return result;
   });
 
   return server;
