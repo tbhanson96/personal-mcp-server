@@ -6,6 +6,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { AppConfig } from './config.js';
+import { MCP_READ_SCOPE, MCP_TOOLS_SCOPE, McpAuthContext } from './auth.js';
 import { homeAssistantTools } from './tools/homeAssistant.js';
 import { homeserverTools } from './tools/homeserver.js';
 import { mealieTools } from './tools/mealie.js';
@@ -21,7 +22,7 @@ export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
   ];
 }
 
-export function createMcpServer(config: AppConfig): Server {
+export function createMcpServer(config: AppConfig, authContext: McpAuthContext = { scopes: [MCP_READ_SCOPE] }): Server {
   const tools = createToolDefinitions(config);
   const toolsByName = new Map(tools.map((definition) => [definition.tool.name, definition]));
 
@@ -57,6 +58,9 @@ export function createMcpServer(config: AppConfig): Server {
     if (!definition) {
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
     }
+    if (requiresToolsScope(definition) && !authContext.scopes.includes(MCP_TOOLS_SCOPE)) {
+      return insufficientScopeResult(config, definition.tool.name);
+    }
 
     return definition.execute(request.params.arguments || {});
   });
@@ -65,5 +69,26 @@ export function createMcpServer(config: AppConfig): Server {
 }
 
 export function securityScopesForTool(definition: ToolDefinition): string[] {
-  return ['mcp:tools'];
+  return [requiresToolsScope(definition) ? MCP_TOOLS_SCOPE : MCP_READ_SCOPE];
+}
+
+export function requiresToolsScope(definition: ToolDefinition): boolean {
+  return definition.tool.annotations?.readOnlyHint === false;
+}
+
+export function insufficientScopeResult(config: AppConfig, toolName: string) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `Additional authorization is required to call ${toolName}.`,
+      },
+    ],
+    isError: true,
+    _meta: {
+      'mcp/www_authenticate': [
+        `Bearer resource_metadata="${config.oauth.issuer}/.well-known/oauth-protected-resource", scope="${MCP_TOOLS_SCOPE}", error="insufficient_scope", error_description="${toolName} requires ${MCP_TOOLS_SCOPE}"`,
+      ],
+    },
+  };
 }

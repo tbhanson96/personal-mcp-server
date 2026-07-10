@@ -6,6 +6,7 @@ import {
   authorizationServerMetadata,
   createAuthorizationCode,
   exchangeAuthorizationCode,
+  McpAuthContext,
   protectedResourceMetadata,
   redirectWithCode,
   registerOAuthClient,
@@ -70,7 +71,7 @@ app.post('/oauth/token', express.urlencoded({ extended: false, limit: '64kb' }),
 });
 
 app.post('/mcp', requireMcpAuth(config), express.json({ limit: '2mb' }), async (request: Request, response: Response) => {
-  const server = createMcpServer(config);
+  const server = createMcpServer(config, response.locals.mcpAuthContext as McpAuthContext | undefined);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });

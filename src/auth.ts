@@ -20,12 +20,20 @@ export type RegisteredClient = {
 
 const authorizationCodes = new Map<string, AuthorizationCode>();
 const registeredClients = new Map<string, RegisteredClient>();
-const supportedScopes = ['mcp:tools'] as const;
-const defaultScope = supportedScopes[0];
+export const MCP_READ_SCOPE = 'mcp:read';
+export const MCP_TOOLS_SCOPE = 'mcp:tools';
+const supportedScopes = [MCP_READ_SCOPE, MCP_TOOLS_SCOPE] as const;
+const defaultScope = MCP_READ_SCOPE;
+
+export type McpAuthContext = {
+  scopes: string[];
+};
 
 export function requireMcpAuth(config: AppConfig) {
   return (request: Request, response: Response, next: NextFunction) => {
-    if (isAuthorized(request.header('authorization'), request.header('x-api-key'), config)) {
+    const authContext = getMcpAuthContext(request.header('authorization'), request.header('x-api-key'), config);
+    if (authContext) {
+      response.locals.mcpAuthContext = authContext;
       next();
       return;
     }
@@ -47,10 +55,20 @@ export function isAuthorized(
   apiKeyHeader: string | undefined,
   config: Pick<AppConfig, 'mcpApiKey' | 'oauth' | 'publicUrl'>,
 ): boolean {
+  return Boolean(getMcpAuthContext(authorizationHeader, apiKeyHeader, config));
+}
+
+export function getMcpAuthContext(
+  authorizationHeader: string | undefined,
+  apiKeyHeader: string | undefined,
+  config: Pick<AppConfig, 'mcpApiKey' | 'oauth' | 'publicUrl'>,
+): McpAuthContext | undefined {
   const token = bearerToken(authorizationHeader);
-  return tokenMatches(token, config.mcpApiKey) ||
-    tokenMatches(apiKeyHeader, config.mcpApiKey) ||
-    isValidOAuthAccessToken(token, config);
+  if (tokenMatches(token, config.mcpApiKey) || tokenMatches(apiKeyHeader, config.mcpApiKey)) {
+    return { scopes: [MCP_READ_SCOPE, MCP_TOOLS_SCOPE] };
+  }
+
+  return oauthAccessTokenContext(token, config);
 }
 
 function bearerToken(header: string | undefined): string | undefined {
@@ -257,33 +275,46 @@ function isValidOAuthAccessToken(
   token: string | undefined,
   config: Pick<AppConfig, 'oauth' | 'publicUrl'>,
 ): boolean {
+  return Boolean(oauthAccessTokenContext(token, config));
+}
+
+function oauthAccessTokenContext(
+  token: string | undefined,
+  config: Pick<AppConfig, 'oauth' | 'publicUrl'>,
+): McpAuthContext | undefined {
   if (!token || tokenMatches(token, config.oauth.loginCode)) {
-    return false;
+    return undefined;
   }
 
   const parts = token.split('.');
   if (parts.length !== 3) {
-    return false;
+    return undefined;
   }
 
   const [encodedHeader, encodedPayload, signature] = parts;
   const expectedSignature = hmac(`${encodedHeader}.${encodedPayload}`, config.oauth.tokenSigningSecret);
   if (!tokenMatches(signature, expectedSignature)) {
-    return false;
+    return undefined;
   }
 
   const payload = parseJson(base64UrlDecode(encodedPayload));
   if (!payload || typeof payload !== 'object') {
-    return false;
+    return undefined;
   }
 
   const now = Math.floor(Date.now() / 1000);
-  return payload.iss === config.oauth.issuer &&
-    payload.aud === config.publicUrl &&
-    typeof payload.exp === 'number' &&
-    payload.exp > now &&
-    typeof payload.scope === 'string' &&
-    payload.scope.split(/\s+/).some((scope) => supportedScopes.includes(scope as (typeof supportedScopes)[number]));
+  if (payload.iss !== config.oauth.issuer ||
+    payload.aud !== config.publicUrl ||
+    typeof payload.exp !== 'number' ||
+    payload.exp <= now ||
+    typeof payload.scope !== 'string') {
+    return undefined;
+  }
+
+  const scopes = payload.scope
+    .split(/\s+/)
+    .filter((scope) => supportedScopes.includes(scope as (typeof supportedScopes)[number]));
+  return scopes.length > 0 ? { scopes: Array.from(new Set(scopes)) } : undefined;
 }
 
 function normalizeScope(scope: string): string {
@@ -294,7 +325,7 @@ function normalizeScope(scope: string): string {
     throw new Error(`Unsupported OAuth scope: ${unsupportedScopes.join(' ')}`);
   }
 
-  return defaultScope;
+  return Array.from(new Set(requestedScopes.length === 0 ? [defaultScope] : requestedScopes)).join(' ');
 }
 
 function signAccessToken(payload: Record<string, unknown>, secret: string): string {
