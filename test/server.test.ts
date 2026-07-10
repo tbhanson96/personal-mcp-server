@@ -60,12 +60,12 @@ describe('createToolDefinitions', () => {
     expect(properties).not.toHaveProperty('repeat_as_new');
   });
 
-  it('uses write OAuth scope for write tools and read scope for read-only tools', () => {
+  it('advertises read OAuth scope for every tool for ChatGPT compatibility', () => {
     const tools = createToolDefinitions(baseConfig);
     const listTasks = tools.find((definition) => definition.tool.name === 'vikunja_list_tasks');
     const createTask = tools.find((definition) => definition.tool.name === 'vikunja_create_task');
 
     expect(listTasks && securityScopesForTool(listTasks)).toEqual(['mcp:read']);
-    expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:write']);
+    expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:read']);
   });
 });

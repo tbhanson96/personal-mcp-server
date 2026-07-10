@@ -65,5 +65,5 @@ export function createMcpServer(config: AppConfig): Server {
 }
 
 export function securityScopesForTool(definition: ToolDefinition): string[] {
-  return [definition.tool.annotations?.readOnlyHint === false ? 'mcp:write' : 'mcp:read'];
+  return ['mcp:read'];
 }
