@@ -38,7 +38,7 @@ describe('isAuthorized', () => {
     expect(isAuthorized(undefined, 'secretx', config)).toBe(false);
   });
 
-  it('accepts OAuth access tokens minted for the MCP resource with the tools scope', () => {
+  it('accepts OAuth access tokens minted for the MCP resource with the read scope', () => {
     const verifier = 'oauth-test-verifier';
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const redirectUri = 'https://chatgpt.com/connector/oauth/test';
@@ -51,7 +51,7 @@ describe('isAuthorized', () => {
       code_challenge: challenge,
       code_challenge_method: 'S256',
       resource: config.publicUrl,
-      scope: 'mcp:tools',
+      scope: 'mcp:read',
     }, config);
 
     const tokenResponse = exchangeAuthorizationCode({
@@ -64,14 +64,14 @@ describe('isAuthorized', () => {
     }, config);
 
     expect(tokenResponse.access_token).toBeTruthy();
-    expect(tokenResponse.scope).toBe('mcp:tools');
+    expect(tokenResponse.scope).toBe('mcp:read');
     expect(isAuthorized(`Bearer ${tokenResponse.access_token}`, undefined, config)).toBe(true);
-    expect(getMcpAuthContext(`Bearer ${tokenResponse.access_token}`, undefined, config)?.scopes).toEqual(['mcp:tools']);
+    expect(getMcpAuthContext(`Bearer ${tokenResponse.access_token}`, undefined, config)?.scopes).toEqual(['mcp:read']);
   });
 
-  it('advertises read and tools scopes in OAuth metadata', () => {
-    expect(protectedResourceMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:tools']);
-    expect(authorizationServerMetadata(config).scopes_supported).toEqual(['mcp:read', 'mcp:tools']);
+  it('only advertises the read scope in OAuth metadata', () => {
+    expect(protectedResourceMetadata(config).scopes_supported).toEqual(['mcp:read']);
+    expect(authorizationServerMetadata(config).scopes_supported).toEqual(['mcp:read']);
   });
 
   it('grants the read scope when the client omits scope', () => {

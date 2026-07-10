@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createToolDefinitions, insufficientScopeResult, securityScopesForTool } from '../src/server.js';
+import { createToolDefinitions, securityScopesForTool } from '../src/server.js';
 import { AppConfig } from '../src/config.js';
 
 const baseConfig: AppConfig = {
@@ -60,34 +60,12 @@ describe('createToolDefinitions', () => {
     expect(properties).not.toHaveProperty('repeat_as_new');
   });
 
-  it('advertises read scope for read tools and tools scope for write tools', () => {
+  it('advertises read scope for every tool', () => {
     const tools = createToolDefinitions(baseConfig);
     const listTasks = tools.find((definition) => definition.tool.name === 'vikunja_list_tasks');
     const createTask = tools.find((definition) => definition.tool.name === 'vikunja_create_task');
 
     expect(listTasks && securityScopesForTool(listTasks)).toEqual(['mcp:read']);
-    expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:tools']);
-  });
-
-  it('returns an MCP auth challenge when a write tool lacks tools scope', () => {
-    const result = insufficientScopeResult({
-      ...baseConfig,
-      publicUrl: 'https://example.com/mcp',
-      oauth: {
-        issuer: 'https://example.com',
-        loginCode: 'login-code',
-        tokenSigningSecret: 'signing-secret',
-        accessTokenTtlSeconds: 3600,
-      },
-    }, 'vikunja_create_task');
-
-    expect(result).toMatchObject({
-      isError: true,
-      _meta: {
-        'mcp/www_authenticate': [
-          expect.stringContaining('scope="mcp:tools"'),
-        ],
-      },
-    });
+    expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:read']);
   });
 });
