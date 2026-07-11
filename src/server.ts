@@ -8,6 +8,7 @@ import {
 import { AppConfig } from './config.js';
 import { MCP_READ_SCOPE } from './auth.js';
 import { logError, logInfo, sanitizeForLog } from './logging.js';
+import { discoveryTools } from './tools/discovery.js';
 import { homeAssistantTools } from './tools/homeAssistant.js';
 import { homeserverTools } from './tools/homeserver.js';
 import { mealieTools } from './tools/mealie.js';
@@ -15,11 +16,16 @@ import { ToolDefinition } from './tools/types.js';
 import { vikunjaTools } from './tools/vikunja.js';
 
 export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
-  return [
+  const serviceTools = [
     ...homeAssistantTools(config.homeAssistant),
     ...homeserverTools(config.homeserver, config.mcpApiKey),
     ...mealieTools(config.mealie),
     ...vikunjaTools(config.vikunja),
+  ];
+
+  return [
+    ...discoveryTools(serviceTools),
+    ...serviceTools,
   ];
 }
 

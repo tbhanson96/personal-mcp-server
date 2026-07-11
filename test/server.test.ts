@@ -13,6 +13,10 @@ describe('createToolDefinitions', () => {
     const names = createToolDefinitions(baseConfig).map((definition) => definition.tool.name);
 
     expect(names).toEqual([
+      'personal_mcp_get_capabilities',
+      'personal_mcp_describe_tool',
+      'personal_mcp_get_usage_guide',
+      'personal_mcp_get_examples',
       'home_assistant_get_config',
       'home_assistant_get_states',
       'home_assistant_get_state',
@@ -67,5 +71,38 @@ describe('createToolDefinitions', () => {
 
     expect(listTasks && securityScopesForTool(listTasks)).toEqual(['mcp:read']);
     expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:read']);
+  });
+
+  it('exposes self-describing capabilities for all registered tools', async () => {
+    const tools = createToolDefinitions(baseConfig);
+    const capabilitiesTool = tools.find((definition) => definition.tool.name === 'personal_mcp_get_capabilities');
+
+    const result = await capabilitiesTool?.execute({});
+    const content = result?.content[0];
+
+    expect(content?.type).toBe('text');
+    if (content?.type === 'text') {
+      const payload = JSON.parse(content.text);
+      expect(payload.tools).toHaveLength(tools.length);
+      expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('vikunja_create_task');
+      expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('personal_mcp_describe_tool');
+    }
+  });
+
+  it('describes one tool with schema, examples, and workflow notes', async () => {
+    const describeTool = createToolDefinitions(baseConfig).find((definition) => definition.tool.name === 'personal_mcp_describe_tool');
+
+    const result = await describeTool?.execute({ tool_name: 'vikunja_create_task' });
+    const content = result?.content[0];
+
+    expect(content?.type).toBe('text');
+    if (content?.type === 'text') {
+      const payload = JSON.parse(content.text);
+      expect(payload.name).toBe('vikunja_create_task');
+      expect(payload.category).toBe('vikunja');
+      expect(payload.tags).toContain('recurring');
+      expect(payload.inputSchema.properties).toHaveProperty('repeat_every_seconds');
+      expect(payload.workflowNotes.join(' ')).toContain('repeat_as_new');
+    }
   });
 });

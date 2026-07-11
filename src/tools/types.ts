@@ -3,6 +3,16 @@ import { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 export type ToolDefinition = {
   tool: Tool;
   execute: (args: Record<string, unknown>) => Promise<CallToolResult>;
+  metadata?: ToolMetadata;
+};
+
+export type ToolMetadata = {
+  category: string;
+  tags: string[];
+  examples?: string[];
+  relatedTools?: string[];
+  workflowNotes?: string[];
+  changesState?: boolean;
 };
 
 export function jsonResult(data: unknown): CallToolResult {
