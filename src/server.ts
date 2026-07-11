@@ -18,7 +18,7 @@ import { vikunjaTools } from './tools/vikunja.js';
 export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
   const serviceTools = [
     ...homeAssistantTools(config.homeAssistant),
-    ...homeserverTools(config.homeserver, config.mcpApiKey),
+    ...homeserverTools(config.homeserver),
     ...mealieTools(config.mealie),
     ...vikunjaTools(config.vikunja),
   ];

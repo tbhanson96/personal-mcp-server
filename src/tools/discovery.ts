@@ -35,16 +35,6 @@ const examples = [
     arguments: { url: 'https://example.com/recipe' },
   },
   {
-    userRequest: 'Search for a movie download.',
-    preferredTool: 'homeserver_search_personal_media_downloads',
-    arguments: { search: '<movie title>', category: 'movies' },
-  },
-  {
-    userRequest: 'Add that selected media download.',
-    preferredTool: 'homeserver_add_personal_media_download',
-    arguments: { downloadToken: '<downloadToken returned by search>', category: 'movies' },
-  },
-  {
     userRequest: 'Turn on the living room light.',
     preferredTool: 'home_assistant_control_entity',
     arguments: { entity_id: 'light.living_room_2', action: 'turn_on' },
@@ -106,22 +96,6 @@ const metadataByToolName: Record<string, ToolMetadata> = {
     tags: ['homeserver', 'health', 'monitoring', 'metrics', 'read'],
     examples: ['Show available homeserver health checks.'],
     changesState: false,
-  },
-  homeserver_search_personal_media_downloads: {
-    category: 'personal_media',
-    tags: ['homeserver', 'media', 'downloads', 'movies', 'tv', 'search'],
-    examples: ['Search for a movie download.', 'Find a TV episode download.'],
-    relatedTools: ['homeserver_add_personal_media_download'],
-    workflowNotes: ['Returns encrypted downloadToken values; clients should pass those tokens back unchanged and cannot see magnet links.'],
-    changesState: false,
-  },
-  homeserver_add_personal_media_download: {
-    category: 'personal_media',
-    tags: ['homeserver', 'media', 'downloads', 'movies', 'tv', 'add'],
-    examples: ['Add the selected movie download using its downloadToken.'],
-    relatedTools: ['homeserver_search_personal_media_downloads'],
-    workflowNotes: ['Only use downloadToken values returned by homeserver_search_personal_media_downloads.'],
-    changesState: true,
   },
   mealie_search_recipes: {
     category: 'mealie',
@@ -376,13 +350,12 @@ function usageGuide() {
     workflows: [
       'For named Vikunja projects or tasks, list projects or tasks first to resolve ids before create/update/complete operations.',
       'For Mealie shopping items, list shopping lists first when the user names a list instead of providing a shopping_list_id.',
-      'For personal media downloads, search first and pass the returned downloadToken unchanged to the add tool.',
       'For Home Assistant device names, list states first to identify the correct entity_id.',
     ],
     safety: [
       'Some tools change state even though they are marked readOnlyHint true for ChatGPT discovery compatibility.',
       'Use semantic intent and tool descriptions to distinguish read operations from state-changing operations.',
-      'Do not ask the user for hidden tokens or decrypted media download links; the server handles those internally.',
+      'Do not ask the user for hidden tokens.',
     ],
   };
 }

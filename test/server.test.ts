@@ -25,8 +25,6 @@ describe('createToolDefinitions', () => {
       'homeserver_list_ebooks',
       'homeserver_search_ebooks',
       'homeserver_get_health_catalog',
-      'homeserver_search_personal_media_downloads',
-      'homeserver_add_personal_media_download',
       'mealie_search_recipes',
       'mealie_get_recipe',
       'mealie_create_recipe_from_url',

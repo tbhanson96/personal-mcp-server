@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { ServiceConfig } from '../config.js';
 import { HomeserverClient } from '../clients/homeserverClient.js';
 import { HttpClient } from '../http.js';
-import { decryptMediaDownloadLink, encryptMediaDownloadLink } from '../mediaDownloadToken.js';
 import { EmptyArgsSchema, parseArgs, zodToJsonSchemaObject } from '../schemas/common.js';
 import { disabledResult, jsonResult, ToolDefinition } from './types.js';
 
@@ -19,19 +17,7 @@ const SearchArgsSchema = z.object({
   search: z.string().min(1),
 });
 
-const MediaDownloadCategorySchema = z.enum(['movies', 'tv']);
-
-const SearchMediaDownloadsArgsSchema = z.object({
-  search: z.string().min(1),
-  category: MediaDownloadCategorySchema,
-});
-
-const AddMediaDownloadArgsSchema = z.object({
-  downloadToken: z.string().min(1),
-  category: MediaDownloadCategorySchema,
-});
-
-export function homeserverTools(config?: ServiceConfig, mediaDownloadSecret = ''): ToolDefinition[] {
+export function homeserverTools(config?: ServiceConfig): ToolDefinition[] {
   const client = config ? new HomeserverClient(new HttpClient(config, config.token ? 'x-api-key' : 'Authorization')) : undefined;
 
   return [
@@ -93,77 +79,5 @@ export function homeserverTools(config?: ServiceConfig, mediaDownloadSecret = ''
         return client ? jsonResult(await client.getHealthCatalog()) : disabledResult('Homeserver');
       },
     },
-    {
-      tool: {
-        name: 'homeserver_search_personal_media_downloads',
-        title: 'Search Personal Media Downloads',
-        description: 'Search for personal media downloads by text and media category.',
-        inputSchema: zodToJsonSchemaObject({
-          search: { type: 'string', minLength: 1 },
-          category: { type: 'string', enum: ['movies', 'tv'] },
-        }, ['search', 'category']),
-        annotations: { readOnlyHint: true, destructiveHint: false },
-      },
-      execute: async (args) => {
-        const parsed = parseArgs(SearchMediaDownloadsArgsSchema, args);
-        if (!client) {
-          return disabledResult('Homeserver');
-        }
-
-        const results = await client.searchTorrents(parsed.search, parsed.category);
-        return jsonResult(encryptMediaDownloadResults(results, mediaDownloadSecret));
-      },
-    },
-    {
-      tool: {
-        name: 'homeserver_add_personal_media_download',
-        title: 'Add Personal Media Download',
-        description: 'Add a selected personal media download to the movies or tv media library.',
-        inputSchema: zodToJsonSchemaObject({
-          downloadToken: { type: 'string', minLength: 1 },
-          category: { type: 'string', enum: ['movies', 'tv'] },
-        }, ['downloadToken', 'category']),
-        annotations: { readOnlyHint: true, destructiveHint: false },
-      },
-      execute: async (args) => {
-        const parsed = parseArgs(AddMediaDownloadArgsSchema, args);
-        if (!client) {
-          return disabledResult('Homeserver');
-        }
-
-        return jsonResult(await client.addTorrent(decryptDownloadToken(parsed.downloadToken, mediaDownloadSecret), parsed.category));
-      },
-    },
   ];
-}
-
-function encryptMediaDownloadResults(results: unknown, secret: string): unknown {
-  if (!Array.isArray(results)) {
-    return results;
-  }
-
-  return results.map((result) => {
-    if (!isObject(result) || typeof result.download !== 'string') {
-      return result;
-    }
-
-    const { download, ...rest } = result;
-    return {
-      ...rest,
-      downloadToken: encryptMediaDownloadLink(download, secret),
-    };
-  });
-}
-
-function decryptDownloadToken(downloadToken: string, secret: string): string {
-  try {
-    return decryptMediaDownloadLink(downloadToken, secret);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid personal media download token';
-    throw new McpError(ErrorCode.InvalidParams, message);
-  }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
