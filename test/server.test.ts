@@ -25,6 +25,10 @@ describe('createToolDefinitions', () => {
       'homeserver_list_ebooks',
       'homeserver_search_ebooks',
       'homeserver_get_health_catalog',
+      'homeserver_query_health_metric',
+      'homeserver_get_health_statistics',
+      'homeserver_get_health_daily_summary',
+      'homeserver_get_sleep_data',
       'mealie_search_recipes',
       'mealie_get_recipe',
       'mealie_create_recipe_from_url',
@@ -84,6 +88,7 @@ describe('createToolDefinitions', () => {
       expect(payload.tools).toHaveLength(tools.length);
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('vikunja_create_task');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('personal_mcp_describe_tool');
+      expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('homeserver_get_health_statistics');
     }
   });
 

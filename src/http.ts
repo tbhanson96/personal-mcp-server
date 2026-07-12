@@ -6,7 +6,7 @@ export class HttpClient {
     private readonly authHeader: 'Authorization' | 'x-api-key' = 'Authorization',
   ) {}
 
-  async get<T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  async get<T>(path: string, query?: Record<string, string | number | boolean | Array<string | number | boolean> | undefined>): Promise<T> {
     return this.request<T>('GET', path, undefined, query);
   }
 
@@ -26,12 +26,16 @@ export class HttpClient {
     method: string,
     path: string,
     body?: unknown,
-    query?: Record<string, string | number | boolean | undefined>,
+    query?: Record<string, string | number | boolean | Array<string | number | boolean> | undefined>,
   ): Promise<T> {
     const url = new URL(`${this.config.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
     for (const [key, value] of Object.entries(query || {})) {
-      if (value !== undefined) {
-        url.searchParams.set(key, String(value));
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          url.searchParams.append(key, String(entry));
+        }
+      } else if (value !== undefined) {
+        url.searchParams.append(key, String(value));
       }
     }
 

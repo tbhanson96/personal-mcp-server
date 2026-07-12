@@ -39,6 +39,33 @@ const examples = [
     preferredTool: 'home_assistant_control_entity',
     arguments: { entity_id: 'light.living_room_2', action: 'turn_on' },
   },
+  {
+    userRequest: 'What was my highest heart rate yesterday?',
+    preferredTool: 'homeserver_get_health_statistics',
+    arguments: {
+      metric: 'heart_rate',
+      start: '<yesterday start ISO datetime>',
+      end: '<today start ISO datetime>',
+      aggregation: 'daily',
+    },
+  },
+  {
+    userRequest: 'Show my heart rate samples yesterday.',
+    preferredTool: 'homeserver_query_health_metric',
+    arguments: {
+      metric: 'heart_rate',
+      start: '<yesterday start ISO datetime>',
+      end: '<today start ISO datetime>',
+    },
+  },
+  {
+    userRequest: 'How long did I sleep last night?',
+    preferredTool: 'homeserver_get_sleep_data',
+    arguments: {
+      start: '<night start ISO datetime>',
+      end: '<morning end ISO datetime>',
+    },
+  },
 ];
 
 const metadataByToolName: Record<string, ToolMetadata> = {
@@ -94,7 +121,46 @@ const metadataByToolName: Record<string, ToolMetadata> = {
   homeserver_get_health_catalog: {
     category: 'health',
     tags: ['homeserver', 'health', 'monitoring', 'metrics', 'read'],
-    examples: ['Show available homeserver health checks.'],
+    examples: ['Show available health metrics.', 'Find the exact metric name for resting heart rate.'],
+    relatedTools: [
+      'homeserver_query_health_metric',
+      'homeserver_get_health_statistics',
+      'homeserver_get_health_daily_summary',
+      'homeserver_get_sleep_data',
+    ],
+    workflowNotes: ['Use this first when the user asks about a health metric by a human name and the exact metric key is unknown.'],
+    changesState: false,
+  },
+  homeserver_query_health_metric: {
+    category: 'health',
+    tags: ['homeserver', 'health', 'apple_health', 'timeseries', 'metrics', 'heart_rate', 'read'],
+    examples: ['Show heart_rate samples from yesterday.', 'Return raw resting_heart_rate data this week.'],
+    relatedTools: ['homeserver_get_health_catalog', 'homeserver_get_health_statistics'],
+    workflowNotes: ['Use for raw samples or graphable time-series data. Use ISO datetime boundaries.'],
+    changesState: false,
+  },
+  homeserver_get_health_statistics: {
+    category: 'health',
+    tags: ['homeserver', 'health', 'apple_health', 'statistics', 'aggregation', 'heart_rate', 'read'],
+    examples: ['What was my highest heart rate yesterday?', 'Average resting heart rate this week.'],
+    relatedTools: ['homeserver_get_health_catalog', 'homeserver_query_health_metric', 'homeserver_get_health_daily_summary'],
+    workflowNotes: ['Use maxValue for highest values, averageValue for averages, minValue for lows, and totalValue for cumulative metrics like calories.'],
+    changesState: false,
+  },
+  homeserver_get_health_daily_summary: {
+    category: 'health',
+    tags: ['homeserver', 'health', 'apple_health', 'daily_summary', 'statistics', 'read'],
+    examples: ['Summarize my health metrics yesterday.', 'Calories burned today.'],
+    relatedTools: ['homeserver_get_health_catalog', 'homeserver_get_health_statistics', 'homeserver_get_sleep_data'],
+    workflowNotes: ['If metrics are omitted, this can return a large summary across every catalog metric. Prefer specifying metrics for focused answers.'],
+    changesState: false,
+  },
+  homeserver_get_sleep_data: {
+    category: 'health',
+    tags: ['homeserver', 'health', 'apple_health', 'sleep', 'duration', 'read'],
+    examples: ['Show sleep records from last night.', 'How long did I sleep yesterday?'],
+    relatedTools: ['homeserver_get_health_daily_summary'],
+    workflowNotes: ['Use sleep record startDate and endDate to compute durations by sleep stage/value.'],
     changesState: false,
   },
   mealie_search_recipes: {
@@ -351,6 +417,7 @@ function usageGuide() {
       'For named Vikunja projects or tasks, list projects or tasks first to resolve ids before create/update/complete operations.',
       'For Mealie shopping items, list shopping lists first when the user names a list instead of providing a shopping_list_id.',
       'For Home Assistant device names, list states first to identify the correct entity_id.',
+      'For Apple Health questions, use the health catalog to resolve metric names, statistics for aggregate questions, raw metric query for graphable samples, and sleep data for sleep durations.',
     ],
     safety: [
       'Some tools change state even though they are marked readOnlyHint true for ChatGPT discovery compatibility.',

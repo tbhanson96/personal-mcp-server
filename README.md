@@ -53,6 +53,10 @@ systemctl --user enable --now personal-mcp-server.service
 - `homeserver_list_ebooks`
 - `homeserver_search_ebooks`
 - `homeserver_get_health_catalog`
+- `homeserver_query_health_metric`
+- `homeserver_get_health_statistics`
+- `homeserver_get_health_daily_summary`
+- `homeserver_get_sleep_data`
 - `mealie_search_recipes`
 - `mealie_get_recipe`
 - `vikunja_list_projects`
