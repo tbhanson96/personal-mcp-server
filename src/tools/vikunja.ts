@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { marked } from 'marked';
 import { ServiceConfig } from '../config.js';
 import { VikunjaClient } from '../clients/vikunjaClient.js';
 import { HttpClient } from '../http.js';
@@ -102,7 +103,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
         inputSchema: zodToJsonSchemaObject({
           project_id: { type: 'number', minimum: 1 },
           title: { type: 'string', minLength: 1 },
-          description: { type: 'string', description: 'Markdown task description. Use real newlines between headings, paragraphs, and lists.' },
+          description: { type: 'string', description: 'Markdown task description. The MCP server converts markdown to Vikunja rich-text HTML.' },
           due_date: { type: 'string', format: 'date-time' },
           priority: { type: 'number', minimum: 0, maximum: 5 },
           repeat_every_seconds: {
@@ -131,7 +132,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
         inputSchema: zodToJsonSchemaObject({
           task_id: { type: 'number', minimum: 1 },
           title: { type: 'string', minLength: 1 },
-          description: { type: 'string', description: 'Markdown task description. Use real newlines between headings, paragraphs, and lists.' },
+          description: { type: 'string', description: 'Markdown task description. The MCP server converts markdown to Vikunja rich-text HTML.' },
           due_date: { type: ['string', 'null'], format: 'date-time' },
           priority: { type: 'number', minimum: 0, maximum: 5 },
           repeat_every_seconds: {
@@ -215,7 +216,16 @@ function normalizeMarkdownDescription(description?: string): string | undefined 
     ? description.replaceAll('\\n', '\n')
     : description;
 
-  return withNewlines.replace(/\r\n?/g, '\n');
+  const normalized = withNewlines.replace(/\r\n?/g, '\n').trim();
+  if (normalized === '' || looksLikeHtml(normalized)) {
+    return normalized;
+  }
+
+  return marked.parse(normalized, { async: false }) as string;
+}
+
+function looksLikeHtml(description: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(description);
 }
 
 function repeatModeValue(mode: z.infer<typeof RepeatModeSchema>): number {

@@ -151,7 +151,7 @@ describe('createToolDefinitions', () => {
           method: 'POST',
           url: '/api/v1/tasks/123',
           body: {
-            description: '## Heading\n\n- one\n- two',
+            description: '<h2>Heading</h2>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n',
             repeat_as_new: true,
           },
         },
