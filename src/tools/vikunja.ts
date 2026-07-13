@@ -154,7 +154,11 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
           return disabledResult('Vikunja');
         }
 
-        return jsonResult(await client.updateTask(parsed.task_id, compactTask(parsed)));
+        const existingTask = await client.getTask(parsed.task_id);
+        return jsonResult(await client.updateTask(parsed.task_id, {
+          ...existingTask,
+          ...compactTask(parsed),
+        }));
       },
     },
     {
@@ -174,7 +178,11 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
           return disabledResult('Vikunja');
         }
 
-        return jsonResult(await client.updateTask(parsed.task_id, { done: parsed.done }));
+        const existingTask = await client.getTask(parsed.task_id);
+        return jsonResult(await client.updateTask(parsed.task_id, {
+          ...existingTask,
+          done: parsed.done,
+        }));
       },
     },
   ];

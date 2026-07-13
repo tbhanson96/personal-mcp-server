@@ -119,6 +119,24 @@ describe('createToolDefinitions', () => {
         rawBody += chunk;
       });
       request.on('end', () => {
+        if (request.method === 'GET') {
+          requests.push({
+            method: request.method,
+            url: request.url,
+            body: undefined,
+          });
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({
+            id: 123,
+            title: 'Existing task',
+            description: 'old',
+            due_date: '2026-07-19T19:00:00Z',
+            reminders: [{ reminder: '2026-07-16T19:00:00Z', relative_period: -259200, relative_to: 'due_date' }],
+            project_id: 1,
+          }));
+          return;
+        }
+
         requests.push({
           method: request.method,
           url: request.url,
@@ -148,10 +166,20 @@ describe('createToolDefinitions', () => {
       expect(result?.isError).toBeFalsy();
       expect(requests).toEqual([
         {
+          method: 'GET',
+          url: '/api/v1/tasks/123',
+          body: undefined,
+        },
+        {
           method: 'POST',
           url: '/api/v1/tasks/123',
           body: {
+            id: 123,
+            title: 'Existing task',
             description: '<h2>Heading</h2>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n',
+            due_date: '2026-07-19T19:00:00Z',
+            reminders: [{ reminder: '2026-07-16T19:00:00Z', relative_period: -259200, relative_to: 'due_date' }],
+            project_id: 1,
             repeat_as_new: true,
           },
         },
