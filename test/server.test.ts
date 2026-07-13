@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createServer } from 'node:http';
+import { AddressInfo } from 'node:net';
 import { createToolDefinitions, securityScopesForTool } from '../src/server.js';
 import { AppConfig } from '../src/config.js';
 
@@ -106,6 +108,58 @@ describe('createToolDefinitions', () => {
       expect(payload.tags).toContain('recurring');
       expect(payload.inputSchema.properties).toHaveProperty('repeat_every_seconds');
       expect(payload.workflowNotes.join(' ')).toContain('repeat_as_new');
+    }
+  });
+
+  it('updates Vikunja markdown descriptions with a minimal payload', async () => {
+    const requests: Array<{ method?: string; url?: string; body: unknown }> = [];
+    const server = createServer((request, response) => {
+      let rawBody = '';
+      request.on('data', (chunk) => {
+        rawBody += chunk;
+      });
+      request.on('end', () => {
+        requests.push({
+          method: request.method,
+          url: request.url,
+          body: rawBody ? JSON.parse(rawBody) : undefined,
+        });
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ id: 123, ...JSON.parse(rawBody) }));
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const tool = createToolDefinitions({
+        ...baseConfig,
+        vikunja: {
+          baseUrl: `http://127.0.0.1:${address.port}`,
+          token: 'token',
+        },
+      }).find((definition) => definition.tool.name === 'vikunja_update_task');
+
+      const result = await tool?.execute({
+        task_id: 123,
+        description: '## Heading\\n\\n- one\\n- two',
+      });
+
+      expect(result?.isError).toBeFalsy();
+      expect(requests).toEqual([
+        {
+          method: 'POST',
+          url: '/api/v1/tasks/123',
+          body: {
+            description: '## Heading\n\n- one\n- two',
+            repeat_as_new: true,
+          },
+        },
+      ]);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
     }
   });
 });

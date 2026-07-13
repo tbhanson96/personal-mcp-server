@@ -102,7 +102,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
         inputSchema: zodToJsonSchemaObject({
           project_id: { type: 'number', minimum: 1 },
           title: { type: 'string', minLength: 1 },
-          description: { type: 'string' },
+          description: { type: 'string', description: 'Markdown task description. Use real newlines between headings, paragraphs, and lists.' },
           due_date: { type: 'string', format: 'date-time' },
           priority: { type: 'number', minimum: 0, maximum: 5 },
           repeat_every_seconds: {
@@ -131,7 +131,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
         inputSchema: zodToJsonSchemaObject({
           task_id: { type: 'number', minimum: 1 },
           title: { type: 'string', minLength: 1 },
-          description: { type: 'string' },
+          description: { type: 'string', description: 'Markdown task description. Use real newlines between headings, paragraphs, and lists.' },
           due_date: { type: ['string', 'null'], format: 'date-time' },
           priority: { type: 'number', minimum: 0, maximum: 5 },
           repeat_every_seconds: {
@@ -153,11 +153,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
           return disabledResult('Vikunja');
         }
 
-        const existingTask = await client.getTask(parsed.task_id);
-        return jsonResult(await client.updateTask(parsed.task_id, {
-          ...existingTask,
-          ...compactTask(parsed),
-        }));
+        return jsonResult(await client.updateTask(parsed.task_id, compactTask(parsed)));
       },
     },
     {
@@ -177,11 +173,7 @@ export function vikunjaTools(config?: ServiceConfig): ToolDefinition[] {
           return disabledResult('Vikunja');
         }
 
-        const existingTask = await client.getTask(parsed.task_id);
-        return jsonResult(await client.updateTask(parsed.task_id, {
-          ...existingTask,
-          done: parsed.done,
-        }));
+        return jsonResult(await client.updateTask(parsed.task_id, { done: parsed.done }));
       },
     },
   ];
@@ -199,7 +191,7 @@ function compactTask(task: {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries({
     title: task.title,
-    description: task.description,
+    description: normalizeMarkdownDescription(task.description),
     due_date: task.due_date,
     priority: task.priority,
     repeat_after: task.repeat_every_seconds,
@@ -212,6 +204,18 @@ function compactTask(task: {
   }
 
   return result;
+}
+
+function normalizeMarkdownDescription(description?: string): string | undefined {
+  if (description === undefined) {
+    return undefined;
+  }
+
+  const withNewlines = !description.includes('\n') && description.includes('\\n')
+    ? description.replaceAll('\\n', '\n')
+    : description;
+
+  return withNewlines.replace(/\r\n?/g, '\n');
 }
 
 function repeatModeValue(mode: z.infer<typeof RepeatModeSchema>): number {
