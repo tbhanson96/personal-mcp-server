@@ -45,6 +45,7 @@ describe('createToolDefinitions', () => {
       'happy_list_sessions',
       'happy_start_codex_session',
       'happy_send_prompt',
+      'happy_get_session_messages',
       'happy_start_and_prompt',
       'happy_stop_session',
     ]);

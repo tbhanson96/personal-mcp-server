@@ -17,7 +17,7 @@ export class HappyBridgeClient {
           'content-type': 'application/json',
           'content-length': Buffer.byteLength(payload),
         },
-        timeout: 30_000,
+        timeout: 35_000,
       }, (response) => {
         let raw = '';
         response.setEncoding('utf8');

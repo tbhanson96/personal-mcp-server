@@ -29,6 +29,15 @@ const StartAndPromptArgsSchema = StartArgsSchema.extend({
 
 const StopArgsSchema = z.object({ session_id: SessionIdSchema });
 
+const GetMessagesArgsSchema = z.object({
+  session_id: SessionIdSchema,
+  after_seq: z.number().int().min(0).default(0),
+  limit: z.number().int().min(1).max(100).default(50),
+  wait_seconds: z.number().int().min(0).max(20).default(0),
+  detail: z.enum(['summary', 'full']).default('summary'),
+  max_content_chars: z.number().int().min(1).max(100_000).default(20_000),
+});
+
 export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
   const client = config ? new HappyBridgeClient(config.socketPath) : undefined;
   const call = async (path: string, body: Record<string, unknown> = {}) => {
@@ -118,6 +127,30 @@ export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
         relatedTools: ['happy_list_sessions', 'happy_stop_session'],
         workflowNotes: ['List sessions first when the target session ID is not already known.'],
         changesState: true,
+      },
+    },
+    {
+      tool: {
+        name: 'happy_get_session_messages',
+        title: 'Get Happy Session Messages',
+        description: 'Read decrypted messages from a locally known Happy session using a sequence cursor. Supports bounded waiting for Codex output and summary or full telemetry.',
+        inputSchema: zodToJsonSchemaObject({
+          session_id: { type: 'string', minLength: 1 },
+          after_seq: { type: 'integer', minimum: 0, default: 0, description: 'Exclusive message sequence cursor from a previous next_after_seq value.' },
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+          wait_seconds: { type: 'integer', minimum: 0, maximum: 20, default: 0, description: 'Wait up to this many seconds for agent output; zero returns immediately.' },
+          detail: { type: 'string', enum: ['summary', 'full'], default: 'summary', description: 'Summary returns conversational and status messages; full also includes reasoning and tool telemetry.' },
+          max_content_chars: { type: 'integer', minimum: 1, maximum: 100_000, default: 20_000, description: 'Maximum text or serialized content characters returned per message.' },
+        }, ['session_id']),
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      },
+      execute: async (args) => call('/sessions/messages', parseArgs(GetMessagesArgsSchema, args)),
+      metadata: {
+        category: 'happy',
+        tags: ['happy', 'session', 'messages', 'codex', 'read'],
+        relatedTools: ['happy_send_prompt', 'happy_start_and_prompt', 'happy_stop_session'],
+        workflowNotes: ['Pass next_after_seq into after_seq on the next call. Use wait_seconds for bounded polling after sending a prompt. Use full detail only when tool or reasoning telemetry is needed.'],
+        changesState: false,
       },
     },
     {

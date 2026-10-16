@@ -69,6 +69,7 @@ systemctl --user enable --now personal-mcp-server.service
 - `happy_list_sessions`
 - `happy_start_codex_session`
 - `happy_send_prompt`
+- `happy_get_session_messages`
 - `happy_start_and_prompt`
 - `happy_stop_session`
 
@@ -79,8 +80,9 @@ as a user service, and configure it with
 `deploy/env/happy-bridge.env.example`. The Personal MCP container receives only
 a read-only bind mount of the bridge's Unix-socket directory. The bridge:
 
-- accepts only structured Happy status, list, start, prompt, and stop requests;
+- accepts only structured Happy status, list, start, prompt, message-read, and stop requests;
 - restricts working directories to `HAPPY_BRIDGE_ALLOWED_ROOTS`;
 - never exposes Happy access tokens or session encryption keys to the container;
+- decrypts known-session messages on the host and returns bounded, cursor-paginated results;
 - refuses state-changing operations when the Happy CLI version differs from
   `HAPPY_BRIDGE_SUPPORTED_VERSION`.

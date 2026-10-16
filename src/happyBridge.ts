@@ -1,4 +1,4 @@
-import { createCipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { lstat, mkdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -29,6 +29,24 @@ type PersistedSession = {
   savedAt: number;
 };
 
+type MessageDetail = 'summary' | 'full';
+
+type NormalizedMessage = {
+  id: string;
+  seq: number;
+  local_id?: string;
+  created_at: number;
+  updated_at: number;
+  role: string;
+  kind: string;
+  text?: string;
+  provider?: string;
+  sent_from?: string;
+  content?: unknown;
+  content_preview?: string;
+  truncated: boolean;
+};
+
 export type HappyBridgeOptions = {
   socketPath: string;
   happyHome: string;
@@ -42,6 +60,9 @@ const permissionModes = new Set(['auto', 'read-only', 'safe-yolo', 'yolo']);
 const effortLevels = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const sessionIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const modelPattern = /^[A-Za-z0-9._:/-]{1,128}$/;
+const messageDetails = new Set(['summary', 'full']);
+const summaryKinds = new Set(['message', 'error', 'status', 'completion']);
+const maxBridgeResponseBytes = 750_000;
 
 export function loadHappyBridgeOptions(env: NodeJS.ProcessEnv = process.env): HappyBridgeOptions {
   const uid = process.getuid?.() ?? 1000;
@@ -118,6 +139,85 @@ export function encryptHappyMessage(
   return Buffer.concat([Buffer.from([0]), Buffer.from(actualNonce), ciphertext, cipher.getAuthTag()]);
 }
 
+export function decryptHappyMessage(
+  encrypted: Uint8Array,
+  key: Uint8Array,
+  variant: 'legacy' | 'dataKey',
+): JsonObject {
+  if (key.length !== 32) throw new Error('Happy session encryption key must be 32 bytes');
+  let plaintext: Uint8Array | null = null;
+
+  if (variant === 'legacy') {
+    if (encrypted.length < nacl.secretbox.nonceLength + nacl.secretbox.overheadLength) {
+      throw new Error('Legacy Happy message is too short');
+    }
+    plaintext = nacl.secretbox.open(
+      encrypted.subarray(nacl.secretbox.nonceLength),
+      encrypted.subarray(0, nacl.secretbox.nonceLength),
+      key,
+    );
+  } else {
+    if (encrypted.length < 29 || encrypted[0] !== 0) throw new Error('Data-key Happy message has an invalid envelope');
+    try {
+      const decipher = createDecipheriv('aes-256-gcm', key, encrypted.subarray(1, 13));
+      decipher.setAuthTag(encrypted.subarray(encrypted.length - 16));
+      plaintext = Buffer.concat([
+        decipher.update(encrypted.subarray(13, encrypted.length - 16)),
+        decipher.final(),
+      ]);
+    } catch {
+      plaintext = null;
+    }
+  }
+
+  if (!plaintext) throw new Error('Happy message decryption failed');
+  const parsed: unknown = JSON.parse(Buffer.from(plaintext).toString('utf8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Happy message body must be an object');
+  return parsed as JsonObject;
+}
+
+export function normalizeHappyMessage(
+  raw: JsonObject,
+  decrypted: JsonObject,
+  detail: MessageDetail,
+  maxContentChars: number,
+): NormalizedMessage | undefined {
+  const role = typeof decrypted.role === 'string' ? decrypted.role : 'unknown';
+  const content = isObject(decrypted.content) ? decrypted.content : undefined;
+  const provider = content && typeof content.provider === 'string' ? content.provider : undefined;
+  const subtype = content ? eventSubtype(content) : undefined;
+  const kind = classifyMessage(role, content?.type, subtype);
+  if (detail === 'summary' && role !== 'user' && !summaryKinds.has(kind)) return undefined;
+
+  const textSource = content ? extractMessageText(content) : undefined;
+  const textResult = truncateText(textSource, maxContentChars);
+  const meta = isObject(decrypted.meta) ? decrypted.meta : undefined;
+  const normalized: NormalizedMessage = {
+    id: stringValue(raw.id, 'message id'),
+    seq: nonNegativeInteger(raw.seq, 'message seq', 502),
+    ...(typeof raw.localId === 'string' && raw.localId ? { local_id: raw.localId } : {}),
+    created_at: nonNegativeInteger(raw.createdAt, 'message createdAt', 502),
+    updated_at: nonNegativeInteger(raw.updatedAt, 'message updatedAt', 502),
+    role,
+    kind,
+    ...(textResult.text ? { text: textResult.text } : {}),
+    ...(provider ? { provider } : {}),
+    ...(meta && typeof meta.sentFrom === 'string' ? { sent_from: meta.sentFrom } : {}),
+    truncated: textResult.truncated,
+  };
+
+  if (detail === 'full' && content) {
+    const serialized = JSON.stringify(content);
+    if (serialized.length <= maxContentChars) {
+      normalized.content = content;
+    } else {
+      normalized.content_preview = serialized.slice(0, maxContentChars);
+      normalized.truncated = true;
+    }
+  }
+  return normalized;
+}
+
 export class HappyBridge {
   constructor(private readonly options: HappyBridgeOptions) {}
 
@@ -131,6 +231,8 @@ export class HappyBridge {
         return this.startSession(body);
       case '/sessions/prompt':
         return this.sendPrompt(body);
+      case '/sessions/messages':
+        return this.getMessages(body);
       case '/sessions/start-and-prompt': {
         const started = await this.startSession(body);
         const prompted = await this.sendPrompt({ ...body, session_id: started.sessionId });
@@ -238,6 +340,124 @@ export class HappyBridge {
     return { accepted: true, sessionId: id, localId };
   }
 
+  private async getMessages(body: JsonObject): Promise<unknown> {
+    const id = sessionId(body.session_id);
+    const requestedAfterSeq = optionalBoundedInteger(body.after_seq, 'after_seq', 0, Number.MAX_SAFE_INTEGER) ?? 0;
+    const limit = optionalBoundedInteger(body.limit, 'limit', 1, 100) ?? 50;
+    const waitSeconds = optionalBoundedInteger(body.wait_seconds, 'wait_seconds', 0, 20) ?? 0;
+    const detail = (optionalEnum(body.detail, messageDetails, 'detail') ?? 'summary') as MessageDetail;
+    const maxContentChars = optionalBoundedInteger(body.max_content_chars, 'max_content_chars', 1, 100_000) ?? 20_000;
+    const session = await this.persistedSession(id);
+    const key = Buffer.from(session.encryptionKey, 'base64');
+    if (key.length !== 32) throw new BridgeError(409, 'Happy session encryption key is invalid');
+    const token = await this.accessToken();
+    const serverUrl = await this.serverUrl();
+    const deadline = Date.now() + waitSeconds * 1_000;
+    const startedAt = Date.now();
+    const messages: NormalizedMessage[] = [];
+    let cursor = requestedAfterSeq;
+    let hasMore = false;
+    let suppressedCount = 0;
+    let decryptionFailures = 0;
+
+    do {
+      const page = await this.fetchMessagePage(serverUrl, token, id, cursor, limit);
+      const rawMessages = page.messages;
+      hasMore = page.hasMore;
+      let stoppedForBudget = false;
+
+      for (const value of rawMessages) {
+        const raw = objectValue(value, 'Happy message');
+        const seq = nonNegativeInteger(raw.seq, 'message seq', 502);
+        if (seq <= cursor) continue;
+
+        let normalized: NormalizedMessage | undefined;
+        try {
+          const envelope = objectValue(raw.content, 'message content');
+          if (envelope.t !== 'encrypted') {
+            suppressedCount += 1;
+            cursor = seq;
+            continue;
+          }
+          const ciphertext = Buffer.from(stringValue(envelope.c, 'encrypted message content'), 'base64');
+          const decrypted = decryptHappyMessage(ciphertext, key, session.encryptionVariant);
+          normalized = normalizeHappyMessage(raw, decrypted, detail, maxContentChars);
+        } catch {
+          decryptionFailures += 1;
+          cursor = seq;
+          continue;
+        }
+
+        if (!normalized) {
+          suppressedCount += 1;
+          cursor = seq;
+          continue;
+        }
+
+        const projectedBytes = Buffer.byteLength(JSON.stringify([...messages, normalized]));
+        if (projectedBytes > maxBridgeResponseBytes) {
+          stoppedForBudget = true;
+          hasMore = true;
+          break;
+        }
+        messages.push(normalized);
+        cursor = seq;
+      }
+
+      if (stoppedForBudget) break;
+      if (waitSeconds === 0 && messages.length > 0) break;
+      if (messages.some((message) => message.role === 'agent' && ['message', 'error', 'completion'].includes(message.kind))) break;
+      if (hasMore && rawMessages.length > 0) continue;
+      if (Date.now() >= deadline) break;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, Math.min(750, deadline - Date.now())));
+    } while (Date.now() <= deadline);
+
+    if (decryptionFailures > 0 && messages.length === 0 && suppressedCount === 0) {
+      throw new BridgeError(502, 'Happy messages could not be decrypted');
+    }
+
+    const active = await this.listSessions()
+      .then((sessions) => sessions.some((tracked) => tracked.happySessionId === id))
+      .catch(() => false);
+    return {
+      session_id: id,
+      messages,
+      next_after_seq: cursor,
+      has_more: hasMore,
+      active,
+      waited_ms: Date.now() - startedAt,
+      suppressed_count: suppressedCount,
+      decryption_failures: decryptionFailures,
+    };
+  }
+
+  private async fetchMessagePage(
+    serverUrl: string,
+    token: string,
+    id: string,
+    afterSeq: number,
+    limit: number,
+  ): Promise<{ messages: unknown[]; hasMore: boolean }> {
+    const url = new URL(`/v3/sessions/${encodeURIComponent(id)}/messages`, `${serverUrl}/`);
+    url.searchParams.set('after_seq', String(afterSeq));
+    url.searchParams.set('limit', String(limit));
+    const response = await fetch(url, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-happy-client': `personal-mcp-happy-bridge/${this.options.supportedVersion}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    }).catch((error: unknown) => {
+      throw new BridgeError(502, `Could not retrieve Happy messages: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    if (!response.ok) throw new BridgeError(502, `Happy rejected message retrieval (HTTP ${response.status})`);
+    const payload = objectValue(await response.json().catch(() => {
+      throw new BridgeError(502, 'Happy returned invalid message JSON');
+    }), 'Happy message response');
+    if (!Array.isArray(payload.messages)) throw new BridgeError(502, 'Happy message response is missing messages');
+    return { messages: payload.messages, hasMore: payload.hasMore === true };
+  }
+
   private async stopSession(body: JsonObject): Promise<{ success: boolean; sessionId: string }> {
     await this.requireCompatibleDaemon();
     const id = sessionId(body.session_id);
@@ -285,6 +505,7 @@ export class HappyBridge {
   private async persistedSession(id: string): Promise<PersistedSession> {
     const registry = objectValue(await readJson(resolve(this.options.happyHome, 'sessions.json')), 'sessions registry');
     const sessions = objectValue(registry.sessions, 'sessions');
+    if (sessions[id] === undefined) throw new BridgeError(404, 'session is not known to this Happy installation');
     const record = objectValue(sessions[id], 'persisted session');
     const variant = stringValue(record.encryptionVariant, 'encryptionVariant');
     if (variant !== 'legacy' && variant !== 'dataKey') throw new BridgeError(409, 'unsupported Happy session encryption variant');
@@ -330,6 +551,10 @@ function objectValue(value: unknown, name: string): JsonObject {
   return value as JsonObject;
 }
 
+function isObject(value: unknown): value is JsonObject {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function stringValue(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value) throw new BridgeError(400, `${name} must be a non-empty string`);
   return value;
@@ -345,6 +570,26 @@ function numberValue(value: unknown, name: string): number {
   return value;
 }
 
+function nonNegativeInteger(value: unknown, name: string, statusCode: number): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new BridgeError(statusCode, `${name} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function optionalBoundedInteger(
+  value: unknown,
+  name: string,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new BridgeError(400, `${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+
 function optionalEnum(value: unknown, allowed: Set<string>, name: string): string | undefined {
   if (value === undefined || value === null) return undefined;
   const parsed = stringValue(value, name);
@@ -356,6 +601,56 @@ function sessionId(value: unknown): string {
   const parsed = stringValue(value, 'session_id');
   if (!sessionIdPattern.test(parsed)) throw new BridgeError(400, 'session_id has an invalid format');
   return parsed;
+}
+
+function eventSubtype(content: JsonObject): string | undefined {
+  const data = isObject(content.data) ? content.data : undefined;
+  const candidates = [data?.type, data?.t, content.type];
+  return candidates.find((value): value is string => typeof value === 'string');
+}
+
+function classifyMessage(role: string, contentType: unknown, subtype: string | undefined): string {
+  if (role === 'user') return 'message';
+  const value = `${typeof contentType === 'string' ? contentType : ''}:${subtype ?? ''}`.toLowerCase();
+  if (value.includes('tool-result') || value.includes('tool_result')) return 'tool_result';
+  if (value.includes('tool-call') || value.includes('tool_call')) return 'tool_call';
+  if (value.includes('reason')) return 'reasoning';
+  if (value.includes('error') || value.includes('fail')) return 'error';
+  if (value.includes('complete') || value.includes('finish') || value.includes('done')) return 'completion';
+  if (value.includes('status') || value.includes('progress') || value.includes('event')) return 'status';
+  if (value.includes('message') || value.includes('output') || value.includes('text')) return 'message';
+  return 'unknown';
+}
+
+function extractMessageText(content: JsonObject): string | undefined {
+  const prioritized = ['text', 'message', 'output', 'error', 'result', 'content'];
+  for (const key of prioritized) {
+    const found = textFromValue(content[key], 0);
+    if (found) return found;
+  }
+  const data = textFromValue(content.data, 0);
+  return data || undefined;
+}
+
+function textFromValue(value: unknown, depth: number): string | undefined {
+  if (depth > 4 || value === undefined || value === null) return undefined;
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const parts = value.map((entry) => textFromValue(entry, depth + 1)).filter((entry): entry is string => Boolean(entry));
+    return parts.length > 0 ? parts.join('\n') : undefined;
+  }
+  if (!isObject(value)) return undefined;
+  for (const key of ['text', 'message', 'output', 'error', 'result', 'content', 'data']) {
+    const found = textFromValue(value[key], depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function truncateText(value: string | undefined, maximum: number): { text?: string; truncated: boolean } {
+  if (!value) return { truncated: false };
+  if (value.length <= maximum) return { text: value, truncated: false };
+  return { text: value.slice(0, maximum), truncated: true };
 }
 
 async function parseBody(request: IncomingMessage, maxBytes: number): Promise<JsonObject> {

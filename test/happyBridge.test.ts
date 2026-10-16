@@ -1,10 +1,16 @@
 import { createDecipheriv } from 'node:crypto';
-import { mkdtemp, mkdir, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import nacl from 'tweetnacl';
-import { describe, expect, it } from 'vitest';
-import { assertAllowedDirectory, encryptHappyMessage } from '../src/happyBridge.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  assertAllowedDirectory,
+  decryptHappyMessage,
+  encryptHappyMessage,
+  HappyBridge,
+  normalizeHappyMessage,
+} from '../src/happyBridge.js';
 
 describe('Happy bridge security boundary', () => {
   it('accepts a real directory inside an allowlisted root', async () => {
@@ -36,6 +42,7 @@ describe('Happy bridge security boundary', () => {
       decipher.final(),
     ]);
     expect(JSON.parse(plaintext.toString('utf8'))).toEqual(message);
+    expect(decryptHappyMessage(bundle, key, 'dataKey')).toEqual(message);
   });
 
   it('produces Happy-compatible legacy secretbox messages', () => {
@@ -51,5 +58,119 @@ describe('Happy bridge security boundary', () => {
 
     expect(plaintext).not.toBeNull();
     expect(JSON.parse(Buffer.from(plaintext!).toString('utf8'))).toEqual(message);
+    expect(decryptHappyMessage(bundle, key, 'legacy')).toEqual(message);
+  });
+
+  it('normalizes ACP messages and suppresses tool telemetry in summary mode', () => {
+    const raw = {
+      id: 'message-1',
+      seq: 7,
+      localId: null,
+      createdAt: 100,
+      updatedAt: 101,
+    };
+    const assistant = {
+      role: 'agent',
+      content: {
+        type: 'acp',
+        provider: 'codex',
+        data: { type: 'message', message: 'Finished the change.' },
+      },
+      meta: { sentFrom: 'cli' },
+    };
+    const toolCall = {
+      role: 'agent',
+      content: {
+        type: 'acp',
+        provider: 'codex',
+        data: { type: 'tool-call', message: 'npm test' },
+      },
+    };
+
+    expect(normalizeHappyMessage(raw, assistant, 'summary', 1_000)).toMatchObject({
+      seq: 7,
+      role: 'agent',
+      kind: 'message',
+      text: 'Finished the change.',
+      provider: 'codex',
+      sent_from: 'cli',
+      truncated: false,
+    });
+    expect(normalizeHappyMessage(raw, toolCall, 'summary', 1_000)).toBeUndefined();
+    expect(normalizeHappyMessage(raw, toolCall, 'full', 4)).toMatchObject({
+      kind: 'tool_call',
+      text: 'npm ',
+      truncated: true,
+    });
+  });
+
+  it('retrieves decrypted messages with a sequence cursor', async () => {
+    const happyHome = await mkdtemp(join(tmpdir(), 'happy-bridge-home-'));
+    const key = Buffer.alloc(32, 4);
+    const sessionId = 'session_123';
+    await writeFile(join(happyHome, 'sessions.json'), JSON.stringify({
+      sessions: {
+        [sessionId]: {
+          encryptionKey: key.toString('base64'),
+          encryptionVariant: 'dataKey',
+          seq: 3,
+          metadataVersion: 1,
+          agentStateVersion: 1,
+          metadata: {},
+          savedAt: 1,
+        },
+      },
+    }));
+    await writeFile(join(happyHome, 'access.key'), JSON.stringify({ token: 'test-token' }));
+    await writeFile(join(happyHome, 'settings.json'), JSON.stringify({ serverUrl: 'https://happy.test' }));
+    await writeFile(join(happyHome, 'daemon.state.json'), JSON.stringify({ pid: process.pid, httpPort: 12345 }));
+
+    const bodies = [
+      { role: 'user', content: { type: 'text', text: 'Do the work.' } },
+      { role: 'agent', content: { type: 'acp', provider: 'codex', data: { type: 'tool-call', message: 'npm test' } } },
+      { role: 'agent', content: { type: 'acp', provider: 'codex', data: { type: 'message', message: 'Done.' } } },
+    ];
+    const messages = bodies.map((body, index) => ({
+      id: `message-${index + 1}`,
+      seq: index + 1,
+      localId: null,
+      content: { t: 'encrypted', c: Buffer.from(encryptHappyMessage(body, key, 'dataKey')).toString('base64') },
+      createdAt: 100 + index,
+      updatedAt: 100 + index,
+    }));
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.startsWith('http://127.0.0.1:12345/list')) {
+        return new Response(JSON.stringify({ children: [] }), { status: 200 });
+      }
+      expect(url).toContain(`/v3/sessions/${sessionId}/messages?after_seq=0&limit=50`);
+      return new Response(JSON.stringify({ messages, hasMore: false }), { status: 200 });
+    }));
+
+    try {
+      const bridge = new HappyBridge({
+        socketPath: join(happyHome, 'bridge.sock'),
+        happyHome,
+        allowedRoots: [happyHome],
+        serverUrl: 'https://happy.test',
+        supportedVersion: '1.2.4',
+        maxPromptChars: 100_000,
+      });
+      const result = await bridge.handle('/sessions/messages', { session_id: sessionId }) as Record<string, unknown>;
+      expect(result).toMatchObject({
+        session_id: sessionId,
+        next_after_seq: 3,
+        has_more: false,
+        active: false,
+        suppressed_count: 1,
+        decryption_failures: 0,
+      });
+      expect(result.messages).toMatchObject([
+        { seq: 1, role: 'user', kind: 'message', text: 'Do the work.' },
+        { seq: 3, role: 'agent', kind: 'message', text: 'Done.', provider: 'codex' },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
