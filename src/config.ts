@@ -8,6 +8,11 @@ export type AppConfig = {
   homeserver?: ServiceConfig;
   mealie?: ServiceConfig;
   vikunja?: ServiceConfig;
+  happyBridge?: HappyBridgeConfig;
+};
+
+export type HappyBridgeConfig = {
+  socketPath: string;
 };
 
 export type OAuthConfig = {
@@ -42,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     homeserver: serviceConfig(env.HOMESERVER_URL, env.HOMESERVER_API_KEY),
     mealie: serviceConfig(env.MEALIE_URL, env.MEALIE_TOKEN),
     vikunja: serviceConfig(env.VIKUNJA_URL, env.VIKUNJA_TOKEN),
+    happyBridge: env.HAPPY_BRIDGE_SOCKET ? { socketPath: env.HAPPY_BRIDGE_SOCKET } : undefined,
   };
 }
 

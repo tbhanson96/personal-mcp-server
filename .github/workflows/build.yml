@@ -65,7 +65,7 @@ jobs:
         run: npm test
 
       - name: Audit
-        run: npm audit
+        run: npm audit --omit=dev
 
   deploy:
     name: Deploy

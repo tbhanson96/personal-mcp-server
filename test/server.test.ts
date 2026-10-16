@@ -41,6 +41,12 @@ describe('createToolDefinitions', () => {
       'vikunja_create_task',
       'vikunja_update_task',
       'vikunja_set_task_done',
+      'happy_daemon_status',
+      'happy_list_sessions',
+      'happy_start_codex_session',
+      'happy_send_prompt',
+      'happy_start_and_prompt',
+      'happy_stop_session',
     ]);
   });
 

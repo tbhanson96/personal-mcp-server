@@ -11,6 +11,7 @@ import { logError, logInfo, sanitizeForLog } from './logging.js';
 import { discoveryTools } from './tools/discovery.js';
 import { homeAssistantTools } from './tools/homeAssistant.js';
 import { homeserverTools } from './tools/homeserver.js';
+import { happyTools } from './tools/happy.js';
 import { mealieTools } from './tools/mealie.js';
 import { ToolDefinition } from './tools/types.js';
 import { vikunjaTools } from './tools/vikunja.js';
@@ -21,6 +22,7 @@ export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
     ...homeserverTools(config.homeserver),
     ...mealieTools(config.mealie),
     ...vikunjaTools(config.vikunja),
+    ...happyTools(config.happyBridge),
   ];
 
   return [

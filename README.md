@@ -2,6 +2,10 @@
 
 MCP server for local personal services: Vikunja, Mealie, homeserver, and Home Assistant.
 
+It can also control the host Happy daemon through a restricted Unix-socket
+bridge. The container never receives `~/.happy`, Happy credentials, the Docker
+socket, or host process access.
+
 This project intentionally starts with read-only tools. Write tools should be added with explicit MCP annotations and service-level allowlists.
 
 ## Development
@@ -61,3 +65,22 @@ systemctl --user enable --now personal-mcp-server.service
 - `mealie_get_recipe`
 - `vikunja_list_projects`
 - `vikunja_list_tasks`
+- `happy_daemon_status`
+- `happy_list_sessions`
+- `happy_start_codex_session`
+- `happy_send_prompt`
+- `happy_start_and_prompt`
+- `happy_stop_session`
+
+## Happy bridge
+
+Build the project, install `deploy/systemd/personal-mcp-happy-bridge.service`
+as a user service, and configure it with
+`deploy/env/happy-bridge.env.example`. The Personal MCP container receives only
+a read-only bind mount of the bridge's Unix-socket directory. The bridge:
+
+- accepts only structured Happy status, list, start, prompt, and stop requests;
+- restricts working directories to `HAPPY_BRIDGE_ALLOWED_ROOTS`;
+- never exposes Happy access tokens or session encryption keys to the container;
+- refuses state-changing operations when the Happy CLI version differs from
+  `HAPPY_BRIDGE_SUPPORTED_VERSION`.

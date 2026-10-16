@@ -2,15 +2,18 @@
 Description=Personal MCP server container
 Wants=network-online.target
 After=network-online.target
+Wants=personal-mcp-happy-bridge.service
+After=personal-mcp-happy-bridge.service
 
 [Service]
 EnvironmentFile=%h/.config/personal-mcp-server/personal-mcp-server.service.env
 ExecStartPre=-/usr/bin/docker rm -f personal-mcp-server
-ExecStartPre=/usr/bin/docker pull ${PERSONAL_MCP_IMAGE}
+ExecStartPre=-/usr/bin/docker pull ${PERSONAL_MCP_IMAGE}
 ExecStart=/usr/bin/docker run \
   --name personal-mcp-server \
   --rm \
   --add-host host.docker.internal:host-gateway \
+  --mount type=bind,src=%h/.local/share/personal-mcp-server/happy-bridge,dst=/run/happy-mcp-bridge,readonly \
   --publish ${PERSONAL_MCP_PORT}:3000 \
   --env-file %h/.config/personal-mcp-server/personal-mcp-server.container.env \
   ${PERSONAL_MCP_IMAGE}
