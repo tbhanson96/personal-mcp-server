@@ -84,6 +84,18 @@ describe('createToolDefinitions', () => {
     expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:read']);
   });
 
+  it('distinguishes Happy host paths from homeserver API paths', () => {
+    const tools = createToolDefinitions(baseConfig);
+    const status = tools.find((definition) => definition.tool.name === 'happy_daemon_status');
+    const start = tools.find((definition) => definition.tool.name === 'happy_start_codex_session');
+    const directory = start?.tool.inputSchema.properties?.directory as { description?: string } | undefined;
+
+    expect(status?.tool.description).toContain('allowed host working-directory roots');
+    expect(start?.tool.description).toContain('different filesystem namespace');
+    expect(directory?.description).toContain('/home/tim/Repo/project');
+    expect(directory?.description).toContain('/Repo/project');
+  });
+
   it('exposes self-describing capabilities for all registered tools', async () => {
     const tools = createToolDefinitions(baseConfig);
     const capabilitiesTool = tools.find((definition) => definition.tool.name === 'personal_mcp_get_capabilities');

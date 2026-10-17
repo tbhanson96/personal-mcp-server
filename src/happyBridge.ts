@@ -100,9 +100,12 @@ function positiveInt(raw: string | undefined, fallback: number): number {
 }
 
 export async function assertAllowedDirectory(directory: string, allowedRoots: string[]): Promise<string> {
-  if (!directory || !isAbsolute(directory)) throw new BridgeError(400, 'directory must be an absolute path');
+  const allowedRootsText = allowedRoots.join(', ');
+  if (!directory || !isAbsolute(directory)) {
+    throw new BridgeError(400, `directory must be an absolute host path under an allowed root: ${allowedRootsText}`);
+  }
   const target = await realpath(directory).catch(() => {
-    throw new BridgeError(400, 'directory must already exist');
+    throw new BridgeError(400, `directory must already exist on the host under an allowed root: ${allowedRootsText}`);
   });
   const targetStat = await stat(target);
   if (!targetStat.isDirectory()) throw new BridgeError(400, 'directory must refer to a directory');
@@ -112,7 +115,7 @@ export async function assertAllowedDirectory(directory: string, allowedRoots: st
     const child = relative(root, target);
     return child === '' || (!child.startsWith('..') && !isAbsolute(child));
   });
-  if (!allowed) throw new BridgeError(403, 'directory is outside HAPPY_BRIDGE_ALLOWED_ROOTS');
+  if (!allowed) throw new BridgeError(403, `directory is outside the allowed host roots: ${roots.join(', ')}`);
   return target;
 }
 
@@ -254,6 +257,8 @@ export class HappyBridge {
       cliVersion,
       compatible: cliVersion === this.options.supportedVersion,
       supportedVersion: this.options.supportedVersion,
+      allowed_roots: this.options.allowedRoots,
+      directory_guidance: 'Use an absolute host filesystem path under allowed_roots. Paths returned by homeserver file tools may use a different filesystem namespace.',
     };
   }
 

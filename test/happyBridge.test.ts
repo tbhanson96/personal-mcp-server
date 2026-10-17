@@ -25,7 +25,7 @@ describe('Happy bridge security boundary', () => {
     const root = await mkdtemp(join(tmpdir(), 'happy-bridge-root-'));
     const outside = await mkdtemp(join(tmpdir(), 'happy-bridge-outside-'));
 
-    await expect(assertAllowedDirectory(outside, [root])).rejects.toThrow('outside HAPPY_BRIDGE_ALLOWED_ROOTS');
+    await expect(assertAllowedDirectory(outside, [root])).rejects.toThrow(`outside the allowed host roots: ${root}`);
   });
 
   it('produces Happy-compatible AES-256-GCM data-key messages', () => {
@@ -143,6 +143,9 @@ describe('Happy bridge security boundary', () => {
       if (url.startsWith('http://127.0.0.1:12345/list')) {
         return new Response(JSON.stringify({ children: [] }), { status: 200 });
       }
+      if (url.startsWith('http://127.0.0.1:12345/status')) {
+        return new Response(JSON.stringify({ connected: true, cliVersion: '1.2.4' }), { status: 200 });
+      }
       expect(url).toContain(`/v3/sessions/${sessionId}/messages?after_seq=0&limit=50`);
       return new Response(JSON.stringify({ messages, hasMore: false }), { status: 200 });
     }));
@@ -155,6 +158,11 @@ describe('Happy bridge security boundary', () => {
         serverUrl: 'https://happy.test',
         supportedVersion: '1.2.4',
         maxPromptChars: 100_000,
+      });
+      await expect(bridge.handle('/status', {})).resolves.toMatchObject({
+        connected: true,
+        allowed_roots: [happyHome],
+        directory_guidance: expect.stringContaining('absolute host filesystem path'),
       });
       const result = await bridge.handle('/sessions/messages', { session_id: sessionId }) as Record<string, unknown>;
       expect(result).toMatchObject({

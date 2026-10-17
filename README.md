@@ -82,6 +82,8 @@ a read-only bind mount of the bridge's Unix-socket directory. The bridge:
 
 - accepts only structured Happy status, list, start, prompt, message-read, and stop requests;
 - restricts working directories to `HAPPY_BRIDGE_ALLOWED_ROOTS`;
+- reports those host roots through `happy_daemon_status` so callers do not confuse
+  them with paths returned by homeserver file APIs;
 - never exposes Happy access tokens or session encryption keys to the container;
 - decrypts known-session messages on the host and returns bounded, cursor-paginated results;
 - refuses state-changing operations when the Happy CLI version differs from
