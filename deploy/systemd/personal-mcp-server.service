@@ -7,8 +7,9 @@ After=personal-mcp-happy-bridge.service
 
 [Service]
 EnvironmentFile=%h/.config/personal-mcp-server/personal-mcp-server.service.env
+EnvironmentFile=-%h/.config/personal-mcp-server/deployed-image.env
+ExecStartPre=/usr/bin/docker pull ${PERSONAL_MCP_IMAGE}
 ExecStartPre=-/usr/bin/docker rm -f personal-mcp-server
-ExecStartPre=-/usr/bin/docker pull ${PERSONAL_MCP_IMAGE}
 ExecStart=/usr/bin/docker run \
   --name personal-mcp-server \
   --rm \
@@ -21,6 +22,7 @@ ExecStop=/usr/bin/docker stop -t 30 personal-mcp-server
 ExecStopPost=-/usr/bin/docker rm -f personal-mcp-server
 Restart=always
 RestartSec=10
+SuccessExitStatus=143
 TimeoutStopSec=45
 
 [Install]

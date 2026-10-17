@@ -1,0 +1,74 @@
+name: Publish image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full main-branch commit SHA to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-personal-mcp-server
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish exact commit
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Verify exact main commit
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_REF"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$RELEASE_REF"
+          echo "RELEASE_SHA=$RELEASE_REF" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build exact image
+        run: |
+          docker build \
+            --build-arg GIT_SHA="$RELEASE_SHA" \
+            --tag "ghcr.io/tbhanson96/personal-mcp-server:sha-$RELEASE_SHA" \
+            --tag ghcr.io/tbhanson96/personal-mcp-server:latest \
+            .
+
+      - name: Publish immutable and latest tags
+        run: |
+          docker push "ghcr.io/tbhanson96/personal-mcp-server:sha-$RELEASE_SHA"
+          docker push ghcr.io/tbhanson96/personal-mcp-server:latest

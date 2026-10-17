@@ -56,6 +56,19 @@ systemctl --user daemon-reload
 systemctl --user enable --now personal-mcp-server.service
 ```
 
+Routine pushes run CI only. To release, dispatch the `Publish image` workflow
+with the full reviewed `main` commit SHA. After it succeeds, deploy the exact,
+revision-labelled image on the host:
+
+```sh
+deploy/deploy-host.sh <full-commit-sha>
+```
+
+The deploy helper validates and installs the tracked systemd unit, pulls the
+immutable `sha-<commit>` image, restarts the service, checks `/health`, verifies
+the running OCI revision, and attempts to restore the previous image digest if
+verification fails. It never invokes an MCP state-changing tool.
+
 ## Tools
 
 - `home_assistant_get_config`
