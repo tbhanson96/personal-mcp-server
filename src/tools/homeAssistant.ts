@@ -10,6 +10,18 @@ const StateArgsSchema = z.object({
   entity_id: z.string().min(1),
 });
 
+const MIN_THERMOSTAT_TEMPERATURE_FAHRENHEIT = 40;
+const MAX_THERMOSTAT_TEMPERATURE_FAHRENHEIT = 95;
+
+const SetTemperatureArgsSchema = z.object({
+  entity_id: z.string()
+    .regex(/^climate\.[a-z0-9_]+$/, 'Expected a climate entity_id'),
+  temperature_fahrenheit: z.number()
+    .finite()
+    .min(MIN_THERMOSTAT_TEMPERATURE_FAHRENHEIT)
+    .max(MAX_THERMOSTAT_TEMPERATURE_FAHRENHEIT),
+});
+
 const MediaPlayerEntityIdSchema = z.string()
   .regex(/^media_player\.[a-z0-9_]+$/, 'Expected a media_player entity_id');
 
@@ -135,6 +147,34 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
       execute: async (args) => {
         const parsed = parseArgs(ControlEntityArgsSchema, args);
         return client ? jsonResult(await client.controlEntity(parsed.entity_id, parsed.action)) : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
+        name: 'home_assistant_set_temperature',
+        title: 'Set Home Assistant Thermostat Temperature',
+        description: 'Set the Fahrenheit target temperature of one Home Assistant climate entity. This changes the thermostat setpoint.',
+        inputSchema: zodToJsonSchemaObject({
+          entity_id: {
+            type: 'string',
+            pattern: '^climate\\.[a-z0-9_]+$',
+            description: 'Exact climate entity_id, for example climate.hallway_hallway.',
+          },
+          temperature_fahrenheit: {
+            type: 'number',
+            minimum: MIN_THERMOSTAT_TEMPERATURE_FAHRENHEIT,
+            maximum: MAX_THERMOSTAT_TEMPERATURE_FAHRENHEIT,
+            description: 'Target temperature in degrees Fahrenheit (40–95 °F).',
+          },
+        }, ['entity_id', 'temperature_fahrenheit']),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      },
+      securityScopes: [MCP_CONTROL_SCOPE],
+      execute: async (args) => {
+        const parsed = parseArgs(SetTemperatureArgsSchema, args);
+        return client
+          ? jsonResult(await client.setTemperature(parsed.entity_id, parsed.temperature_fahrenheit))
+          : disabledResult('Home Assistant');
       },
     },
     {

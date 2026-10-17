@@ -87,6 +87,19 @@ export class HomeAssistantClient {
     });
   }
 
+  async setTemperature(entityId: string, temperatureFahrenheit: number): Promise<Record<string, unknown>> {
+    await this.http.post('/api/services/climate/set_temperature', {
+      entity_id: entityId,
+      temperature: temperatureFahrenheit,
+    });
+
+    return {
+      success: true,
+      entity_id: entityId,
+      temperature_fahrenheit: temperatureFahrenheit,
+    };
+  }
+
   async playSpotify(spotifyUri: string): Promise<Record<string, unknown>> {
     const player = await this.getDefaultSpotifyPlayer();
     assertCapability(player, 'play_media');

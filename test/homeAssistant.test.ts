@@ -11,7 +11,7 @@ type CapturedRequest = {
   body?: unknown;
 };
 
-describe('Home Assistant media playback tools', () => {
+describe('Home Assistant tools', () => {
   const servers: ReturnType<typeof createServer>[] = [];
 
   afterEach(async () => {
@@ -19,6 +19,63 @@ describe('Home Assistant media playback tools', () => {
       server.close((error) => error ? reject(error) : resolve());
     })));
     servers.length = 0;
+  });
+
+  it('sets a validated Fahrenheit thermostat target with climate.set_temperature', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+    const tool = toolNamed(baseUrl, 'home_assistant_set_temperature');
+
+    const result = await tool.execute({
+      entity_id: 'climate.hallway_hallway',
+      temperature_fahrenheit: 68.5,
+    });
+
+    expect(resultJson(result)).toEqual({
+      success: true,
+      entity_id: 'climate.hallway_hallway',
+      temperature_fahrenheit: 68.5,
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        url: '/api/services/climate/set_temperature',
+        authorization: 'Bearer ha-secret',
+        body: {
+          entity_id: 'climate.hallway_hallway',
+          temperature: 68.5,
+        },
+      }),
+    ]);
+  });
+
+  it('rejects invalid climate entities and Fahrenheit targets before any network call', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+    const tool = toolNamed(baseUrl, 'home_assistant_set_temperature');
+
+    await expect(tool.execute({
+      entity_id: 'light.hallway',
+      temperature_fahrenheit: 68,
+    })).rejects.toThrow('Expected a climate entity_id');
+    await expect(tool.execute({
+      entity_id: 'climate.hallway_hallway',
+      temperature_fahrenheit: 39.9,
+    })).rejects.toThrow();
+    await expect(tool.execute({
+      entity_id: 'climate.hallway_hallway',
+      temperature_fahrenheit: 95.1,
+    })).rejects.toThrow();
+
+    expect(requests).toEqual([]);
+  });
+
+  it('reports a Home Assistant service failure instead of returning false success', async () => {
+    const { baseUrl } = await startHomeAssistantStub(servers, [], 500);
+    const tool = toolNamed(baseUrl, 'home_assistant_set_temperature');
+
+    await expect(tool.execute({
+      entity_id: 'climate.hallway_hallway',
+      temperature_fahrenheit: 68,
+    })).rejects.toThrow('POST /api/services/climate/set_temperature failed: 500');
   });
 
   it('returns sanitized playback state and capability flags', async () => {
@@ -185,14 +242,16 @@ describe('Home Assistant media playback tools', () => {
 
   it('requires control scope and never accepts credentials in tool arguments', () => {
     const tools = homeAssistantTools({ baseUrl: 'http://ha.invalid', token: 'server-side-only' });
-    for (const name of ['home_assistant_play_spotify', 'home_assistant_control_media_player']) {
+    for (const name of ['home_assistant_set_temperature', 'home_assistant_play_spotify', 'home_assistant_control_media_player']) {
       const tool = tools.find((candidate) => candidate.tool.name === name);
       expect(tool?.securityScopes).toEqual([MCP_CONTROL_SCOPE]);
       expect(tool?.tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
       expect(tool?.tool.inputSchema.properties).not.toHaveProperty('token');
       expect(tool?.tool.inputSchema.properties).not.toHaveProperty('password');
-      expect(tool?.tool.inputSchema.properties).not.toHaveProperty('entity_id');
-      expect(tool?.tool.inputSchema.properties).not.toHaveProperty('source');
+      if (name !== 'home_assistant_set_temperature') {
+        expect(tool?.tool.inputSchema.properties).not.toHaveProperty('entity_id');
+        expect(tool?.tool.inputSchema.properties).not.toHaveProperty('source');
+      }
     }
   });
 });
@@ -217,6 +276,7 @@ function resultJson(result: Awaited<ReturnType<ReturnType<typeof toolNamed>['exe
 async function startHomeAssistantStub(
   servers: ReturnType<typeof createServer>[],
   states: unknown[],
+  postErrorStatus?: number,
 ): Promise<{ baseUrl: string; requests: CapturedRequest[] }> {
   const requests: CapturedRequest[] = [];
   const server = createServer((request, response) => {
@@ -231,6 +291,11 @@ async function startHomeAssistantStub(
         authorization: request.headers.authorization,
         body: rawBody ? JSON.parse(rawBody) : undefined,
       });
+      if (request.method === 'POST' && postErrorStatus) {
+        response.writeHead(postErrorStatus, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ message: 'Service call failed' }));
+        return;
+      }
       response.writeHead(200, { 'Content-Type': 'application/json' });
       if (request.method === 'GET' && request.url?.startsWith('/api/states/')) {
         const entityId = decodeURIComponent(request.url.slice('/api/states/'.length));

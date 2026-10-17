@@ -25,6 +25,7 @@ describe('createToolDefinitions', () => {
       'home_assistant_get_states',
       'home_assistant_get_state',
       'home_assistant_control_entity',
+      'home_assistant_set_temperature',
       'home_assistant_get_media_players',
       'home_assistant_play_spotify',
       'home_assistant_control_media_player',
@@ -85,12 +86,14 @@ describe('createToolDefinitions', () => {
     const listTasks = tools.find((definition) => definition.tool.name === 'vikunja_list_tasks');
     const createTask = tools.find((definition) => definition.tool.name === 'vikunja_create_task');
     const getPlayers = tools.find((definition) => definition.tool.name === 'home_assistant_get_media_players');
+    const setTemperature = tools.find((definition) => definition.tool.name === 'home_assistant_set_temperature');
     const playSpotify = tools.find((definition) => definition.tool.name === 'home_assistant_play_spotify');
     const controlPlayer = tools.find((definition) => definition.tool.name === 'home_assistant_control_media_player');
 
     expect(listTasks && securityScopesForTool(listTasks)).toEqual(['mcp:read']);
     expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:read']);
     expect(getPlayers && securityScopesForTool(getPlayers)).toEqual(['mcp:read']);
+    expect(setTemperature && securityScopesForTool(setTemperature)).toEqual(['mcp:control']);
     expect(playSpotify && securityScopesForTool(playSpotify)).toEqual(['mcp:control']);
     expect(controlPlayer && securityScopesForTool(controlPlayer)).toEqual(['mcp:control']);
   });
@@ -114,8 +117,8 @@ describe('createToolDefinitions', () => {
     await client.connect(clientTransport);
     try {
       const result = await client.callTool({
-        name: 'home_assistant_play_spotify',
-        arguments: { spotify_uri: 'spotify:track:028i7HBfp8uE5epmx5ieMA' },
+        name: 'home_assistant_set_temperature',
+        arguments: { entity_id: 'climate.hallway_hallway', temperature_fahrenheit: 68 },
       });
 
       expect(result.isError).toBe(true);
@@ -159,6 +162,7 @@ describe('createToolDefinitions', () => {
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('personal_mcp_describe_tool');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('homeserver_get_health_statistics');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_play_spotify');
+      expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_set_temperature');
     }
   });
 

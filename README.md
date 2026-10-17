@@ -35,8 +35,9 @@ or:
 x-api-key: <PERSONAL_MCP_API_KEY>
 ```
 
-OAuth advertises `mcp:read` and `mcp:control` separately. Playback mutations
-require `mcp:control`; read-only player discovery requires `mcp:read`. The
+OAuth advertises `mcp:read` and `mcp:control` separately. Home Assistant
+mutations such as thermostat and playback control require `mcp:control`;
+read-only discovery requires `mcp:read`. The
 server returns an OAuth scope-upgrade challenge when a read-only connection
 calls a control tool. The server API key grants both scopes. Home Assistant
 credentials remain in the server environment and are never accepted as tool
@@ -61,6 +62,7 @@ systemctl --user enable --now personal-mcp-server.service
 - `home_assistant_get_states`
 - `home_assistant_get_state`
 - `home_assistant_control_entity`
+- `home_assistant_set_temperature`
 - `home_assistant_get_media_players`
 - `home_assistant_play_spotify`
 - `home_assistant_control_media_player`
@@ -86,6 +88,8 @@ systemctl --user enable --now personal-mcp-server.service
 
 See [Spotify playback through Home Assistant](docs/spotify-playback.md) for the
 tool workflow, security model, supported actions, and device limitations.
+See [Thermostat control through Home Assistant](docs/thermostat-control.md) for
+setpoint validation, authorization, and safe testing guidance.
 
 ## Happy bridge
 

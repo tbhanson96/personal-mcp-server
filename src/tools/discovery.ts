@@ -40,6 +40,11 @@ const examples = [
     arguments: { entity_id: 'light.living_room_2', action: 'turn_on' },
   },
   {
+    userRequest: 'Set the hallway thermostat to 68 degrees.',
+    preferredTool: 'home_assistant_set_temperature',
+    arguments: { entity_id: 'climate.hallway_hallway', temperature_fahrenheit: 68 },
+  },
+  {
     userRequest: 'Play Through My System by Its Murph, Arlo, and Emi Grace on the living room Spotify player.',
     preferredTool: 'home_assistant_play_spotify',
     arguments: {
@@ -103,6 +108,17 @@ const metadataByToolName: Record<string, ToolMetadata> = {
     examples: ['Turn on light.living_room_2.', 'Toggle an input_boolean helper.'],
     relatedTools: ['home_assistant_get_states', 'home_assistant_get_state'],
     workflowNotes: ['Use get_states first if the user names a device but not an entity_id. Scenes only support turn_on.'],
+    changesState: true,
+  },
+  home_assistant_set_temperature: {
+    category: 'home_assistant',
+    tags: ['home_assistant', 'climate', 'thermostat', 'temperature', 'setpoint'],
+    examples: ['Set climate.hallway_hallway to 68 °F.'],
+    relatedTools: ['home_assistant_get_state', 'home_assistant_get_states'],
+    workflowNotes: [
+      'Resolve the exact climate entity_id before changing it.',
+      'temperature_fahrenheit is limited to 40–95 °F and is sent to Home Assistant with climate.set_temperature.',
+    ],
     changesState: true,
   },
   home_assistant_get_media_players: {
@@ -450,7 +466,7 @@ function usageGuide() {
     workflows: [
       'For named Vikunja projects or tasks, list projects or tasks first to resolve ids before create/update/complete operations.',
       'For Mealie shopping items, list shopping lists first when the user names a list instead of providing a shopping_list_id.',
-      'For Home Assistant device names, list states first to identify the correct entity_id. For playback, prefer home_assistant_get_media_players because it returns sanitized state, capabilities, and sources.',
+      'For Home Assistant device names, list states first to identify the correct entity_id. Use home_assistant_set_temperature only for an exact climate entity and a Fahrenheit setpoint. For playback, prefer home_assistant_get_media_players because it returns sanitized state, capabilities, and sources.',
       'For a named Spotify song, search Spotify first, then pass the exact returned Spotify URI to home_assistant_play_spotify; never invent a URI.',
       'For Apple Health questions, use the health catalog to resolve metric names, statistics for aggregate questions, raw metric query for graphable samples, and sleep data for sleep durations.',
     ],
