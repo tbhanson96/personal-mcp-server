@@ -9,6 +9,8 @@ import { pathToFileURL } from 'node:url';
 export const EXIT_HANDOFF = 20;
 const CHATGPT_PLUGINS_URL = 'https://chatgpt.com/plugins';
 
+class HandoffRequiredError extends Error {}
+
 export function compareManifests(before, after) {
   const beforeTools = new Map((before.tools ?? []).map((tool) => [tool.name, tool]));
   const afterTools = new Map((after.tools ?? []).map((tool) => [tool.name, tool]));
@@ -36,9 +38,11 @@ export function environmentFindings({ executablePath, profileDir, headless, disp
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const profileDir = path.resolve(expandHome(options.profileDir ?? process.env.PERSONAL_MCP_CHATGPT_PROFILE_DIR ?? '~/.config/personal-mcp-server/chatgpt-refresh-profile'));
+  const profileDir = path.resolve(expandHome(options.profileDir ?? process.env.PERSONAL_MCP_CHATGPT_PROFILE_DIR ?? '~/.config/chromium'));
   const pluginName = options.pluginName ?? process.env.PERSONAL_MCP_CHATGPT_PLUGIN_NAME ?? 'Personal MCP';
-  const headless = options.headless || process.env.PERSONAL_MCP_CHATGPT_HEADLESS === '1';
+  const headless = process.env.PERSONAL_MCP_CHATGPT_HEADLESS === undefined
+    ? options.headless
+    : process.env.PERSONAL_MCP_CHATGPT_HEADLESS === '1';
 
   if (options.checkEnvironment) {
     const playwright = await loadPlaywright();
@@ -67,6 +71,17 @@ async function main() {
     return;
   }
 
+  if (options.probeProfile) {
+    const playwright = await loadPlaywright();
+    const executablePath = await usableExecutable(playwright?.chromium?.executablePath?.());
+    const findings = environmentFindings({ executablePath, profileDir, headless });
+    if (findings.length > 0) return handoff(findings.join(' '));
+    const profileExists = await stat(profileDir).then((value) => value.isDirectory()).catch(() => false);
+    if (!profileExists) return handoff('The persistent browser profile does not exist.');
+    await probeProfile({ playwright, profileDir, pluginName, headless, artifactDir: options.artifactDir });
+    return;
+  }
+
   if (!options.beforeManifest || !options.afterManifest) usageError('Both --before-manifest and --after-manifest are required.');
   const before = await readJson(options.beforeManifest);
   const after = await readJson(options.afterManifest);
@@ -88,7 +103,7 @@ async function main() {
   const findings = environmentFindings({ executablePath, profileDir, headless });
   if (findings.length > 0) return handoff(findings.join(' '));
   const profileExists = await stat(profileDir).then((value) => value.isDirectory()).catch(() => false);
-  if (!profileExists) return handoff('The dedicated browser profile is not initialized. Run npm run chatgpt:refresh:setup from an interactive desktop.');
+  if (!profileExists) return handoff('The persistent browser profile is not initialized. Point PERSONAL_MCP_CHATGPT_PROFILE_DIR at a user-controlled, already authenticated Chromium profile or initialize the dedicated profile manually.');
 
   const artifactDir = path.resolve(expandHome(options.artifactDir ?? `~/.local/state/personal-mcp-server/chatgpt-refresh/${new Date().toISOString().replaceAll(':', '-')}`));
   await mkdir(artifactDir, { recursive: true, mode: 0o700 });
@@ -100,11 +115,12 @@ async function main() {
     context = await playwright.chromium.launchPersistentContext(profileDir, { headless });
     page = context.pages()[0] ?? await context.newPage();
     await page.goto(CHATGPT_PLUGINS_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await waitForChatGptUi(page);
 
     if (await requiresLogin(page)) {
       await writeReport(reportPath, { outcome: 'handoff_required', reason: 'login_required', ...evidence });
       await failureScreenshot(page, artifactDir);
-      return handoff('ChatGPT login is required. Run npm run chatgpt:refresh:setup in an interactive desktop, sign in manually, then retry.');
+      return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the headless run.');
     }
 
     const pluginTarget = await firstVisible([
@@ -178,6 +194,10 @@ async function main() {
     console.error('Start a new ChatGPT conversation and rerun the affected plugin tests; existing conversations may retain stale tools.');
   } catch (error) {
     if (page) await failureScreenshot(page, artifactDir);
+    if (error instanceof HandoffRequiredError) {
+      await writeReport(reportPath, { outcome: 'handoff_required', reason: 'human_verification_required', ...evidence });
+      return handoff(error.message);
+    }
     await writeReport(reportPath, { outcome: 'verification_failed', error: safeError(error), ...evidence });
     console.error(`ChatGPT refresh verification failed: ${safeError(error)}`);
     console.error(`Private evidence: ${reportPath}`);
@@ -190,6 +210,65 @@ async function main() {
 async function requiresLogin(page) {
   if (!page.url().startsWith('https://chatgpt.com/')) return true;
   return (await page.getByRole('button', { name: /log in|sign up/i }).count()) > 0;
+}
+
+async function waitForChatGptUi(page) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (await hasHumanVerificationChallenge(page)) {
+      throw new HandoffRequiredError('ChatGPT presented a human-verification challenge. Complete it manually in a user-controlled browser; the automation will not interact with CAPTCHA.');
+    }
+    const bodyHasText = await page.locator('body').evaluate((body) => body.innerText.trim().length > 0).catch(() => false);
+    if (bodyHasText) return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error('Timed out waiting for the ChatGPT Plugins UI to become ready.');
+}
+
+async function hasHumanVerificationChallenge(page) {
+  if (await page.getByText(/verify you are human/i).count().catch(() => 0) > 0) return true;
+  if (await page.locator('iframe[title*="challenge" i], iframe[title*="verification" i]').count().catch(() => 0) > 0) return true;
+  return page.frames().some((frame) => frame.url().startsWith('https://challenges.cloudflare.com/'));
+}
+
+async function probeProfile({ playwright, profileDir, pluginName, headless, artifactDir: requestedArtifactDir }) {
+  const artifactDir = path.resolve(expandHome(requestedArtifactDir ?? `~/.local/state/personal-mcp-server/chatgpt-refresh/${new Date().toISOString().replaceAll(':', '-')}`));
+  await mkdir(artifactDir, { recursive: true, mode: 0o700 });
+  await chmod(artifactDir, 0o700);
+  const reportPath = path.join(artifactDir, 'report.json');
+  let context;
+  let page;
+  try {
+    context = await playwright.chromium.launchPersistentContext(profileDir, { headless });
+    page = context.pages()[0] ?? await context.newPage();
+    await page.goto(CHATGPT_PLUGINS_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await waitForChatGptUi(page);
+    if (await requiresLogin(page)) {
+      await writeReport(reportPath, { outcome: 'handoff_required', reason: 'login_required', pluginName, headless });
+      await failureScreenshot(page, artifactDir);
+      return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the headless probe.');
+    }
+    const pluginTarget = await firstVisible([
+      page.getByRole('link', { name: pluginName, exact: true }),
+      page.getByRole('button', { name: pluginName, exact: true }),
+      page.getByText(pluginName, { exact: true }),
+    ]);
+    if (!pluginTarget) throw new Error(`Could not find the ${pluginName} connection using semantic locators.`);
+    await writeReport(reportPath, { outcome: 'profile_ready', pluginName, headless });
+    console.log(JSON.stringify({ outcome: 'profile_ready', pluginName, headless, reportPath }, null, 2));
+  } catch (error) {
+    if (page) await failureScreenshot(page, artifactDir);
+    if (error instanceof HandoffRequiredError) {
+      await writeReport(reportPath, { outcome: 'handoff_required', reason: 'human_verification_required', pluginName, headless });
+      return handoff(error.message);
+    }
+    await writeReport(reportPath, { outcome: 'verification_failed', error: safeError(error), pluginName, headless });
+    console.error(`Headless ChatGPT profile probe failed: ${safeError(error)}`);
+    console.error(`Private evidence: ${reportPath}`);
+    process.exitCode = 1;
+  } finally {
+    await context?.close().catch(() => undefined);
+  }
 }
 
 async function firstVisible(locators) {
@@ -229,12 +308,14 @@ async function readJson(filePath) {
 }
 
 function parseArgs(argv) {
-  const parsed = { headless: false, checkEnvironment: false, setupProfile: false };
+  const parsed = { headless: true, checkEnvironment: false, setupProfile: false, probeProfile: false };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === '--headless') parsed.headless = true;
+    else if (value === '--headed') parsed.headless = false;
     else if (value === '--check-environment') parsed.checkEnvironment = true;
     else if (value === '--setup-profile') parsed.setupProfile = true;
+    else if (value === '--probe-profile') parsed.probeProfile = true;
     else if (['--before-manifest', '--after-manifest', '--profile-dir', '--plugin-name', '--artifact-dir'].includes(value)) {
       const next = argv[index + 1];
       if (!next) usageError(`${value} requires a value.`);
@@ -270,7 +351,7 @@ function handoff(message) {
 
 function usageError(message) {
   console.error(message);
-  console.error('Usage: refresh-chatgpt-plugin.mjs --before-manifest PATH --after-manifest PATH [--profile-dir PATH] [--plugin-name NAME] [--headless]');
+  console.error('Usage: refresh-chatgpt-plugin.mjs --before-manifest PATH --after-manifest PATH [--profile-dir PATH] [--plugin-name NAME] [--headless|--headed]');
   process.exit(2);
   throw new Error(message);
 }

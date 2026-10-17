@@ -23,21 +23,24 @@ affected tests. The official documentation abbreviates this action as
 ```sh
 npm ci
 npx playwright install chromium
-npm run chatgpt:refresh:setup
 npm run chatgpt:refresh:check
+npm run chatgpt:refresh:probe
 ```
 
-Run setup from an interactive graphical session. It opens a dedicated profile
-at `~/.config/personal-mcp-server/chatgpt-refresh-profile`; sign in and complete
-CAPTCHA or MFA yourself, verify the Personal MCP plugin is visible, and close
-the browser. The automation never reads, exports, or prints browser storage,
-and it never attempts login or approval flows. Do not point it at a normal
-daily-use browser profile.
+The refresh runs headlessly and needs no graphical display. Point
+`PERSONAL_MCP_CHATGPT_PROFILE_DIR` at a user-controlled Chromium profile that
+is already authenticated with ChatGPT; the host default is
+`~/.config/chromium`. If no such profile exists, create and authenticate it
+manually outside this automation. The automation never reads, exports, or
+prints browser storage, and it never attempts login or approval flows.
 
-Override the dedicated path with `PERSONAL_MCP_CHATGPT_PROFILE_DIR` and the
-connection label with `PERSONAL_MCP_CHATGPT_PLUGIN_NAME`. Headless mode is only
-available after interactive setup and requires the explicit
-`PERSONAL_MCP_CHATGPT_HEADLESS=1` opt-in.
+The probe is read-only: it opens ChatGPT Plugins headlessly and verifies the
+configured plugin is visible. It does not click **Refresh tools**.
+
+Override the default profile path with `PERSONAL_MCP_CHATGPT_PROFILE_DIR` and
+the connection label with `PERSONAL_MCP_CHATGPT_PLUGIN_NAME`. Headless mode is
+the default; `PERSONAL_MCP_CHATGPT_HEADLESS=0` is an explicit headed diagnostic
+override.
 
 Failure reports and screenshots are written with private permissions beneath
 `~/.local/state/personal-mcp-server/chatgpt-refresh/`. They contain only schema

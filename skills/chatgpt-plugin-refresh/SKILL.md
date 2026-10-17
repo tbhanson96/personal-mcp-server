@@ -11,8 +11,8 @@ deployed revision, service, and health endpoint have been verified and the
 before/after manifests differ. A pending refresh may be retried against the
 same verified deployment.
 
-Run `npm run chatgpt:refresh:check` before browser work. Prefer the dedicated,
-user-controlled persistent profile documented in
+Run `npm run chatgpt:refresh:check` before browser work. Use the
+user-controlled persistent Chromium profile documented in
 [references/operator-runbook.md](references/operator-runbook.md). Do not read,
 copy, print, export, or serialize cookies, passwords, tokens, profile contents,
 or browser storage. Do not automate login, CAPTCHA, MFA, risk acceptance,
@@ -21,11 +21,11 @@ operator the exact next UI action.
 
 For an eligible refresh, use
 `scripts/refresh-chatgpt-plugin.mjs --before-manifest <path> --after-manifest <path>`.
-The script uses Playwright's persistent Chromium context, semantic locators,
-and a local failure screenshot. It only visits `https://chatgpt.com/plugins`,
-opens the configured plugin connection, and selects **Refresh tools**. Do not
-replace this with hidden APIs, copied network requests, remote-debugging
-attachment, or undocumented endpoints.
+The script uses a headless Playwright persistent Chromium context by default,
+semantic locators, and a local failure screenshot. It only visits
+`https://chatgpt.com/plugins`, opens the configured plugin connection, and
+selects **Refresh tools**. Do not replace this with hidden APIs, copied network
+requests, remote-debugging attachment, or undocumented endpoints.
 
 Treat the refresh as complete only when the script verifies changed advertised
 metadata and every newly added tool name in ChatGPT. If the UI does not expose
