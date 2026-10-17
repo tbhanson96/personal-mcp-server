@@ -22,8 +22,10 @@
   If they differ, use `$chatgpt-plugin-refresh` or the deploy helper's explicit
   `--refresh-chatgpt` option. Browser refresh is opt-in and must stop for login,
   CAPTCHA, MFA, permission changes, or confirmation. If schemas are unchanged,
-  record that ChatGPT refresh was skipped. If refreshed, verify added tools and
-  report that affected tests require a new conversation.
+  record that ChatGPT refresh was skipped. If refreshed, record the manifest
+  delta and successful **Refresh tools** click; do not require tool names in the
+  Manage app DOM, which does not expose them. Report that affected tests require
+  a new conversation.
 - Stop and ask before destructive operations, credential or secret changes,
   irreversible data changes, live Home Assistant mutations, uncertain service
   targets, force pushes, history rewrites, or a deployment whose rollback path

@@ -14,8 +14,10 @@ reports the pending action without opening a browser.
 The automation follows the [official OpenAI refresh
 flow](https://developers.openai.com/plugins/deploy/connect-chatgpt): open the
 custom MCP connection in ChatGPT Plugins, select **Refresh tools**, verify
-changed advertised metadata and added tools, then use a new conversation for
-affected tests. The official documentation abbreviates this action as
+the expected change from the compared manifests, then use a new conversation
+for affected tests. The Manage app page does not expose individual tool names,
+so successful automation means the eligible manifest delta was recorded and
+the button was clicked without a handoff. The official documentation abbreviates this action as
 “Refresh”; the current UI button is labeled **Refresh tools**.
 
 ## Browser setup
@@ -55,9 +57,10 @@ running.
 
 Failure reports and screenshots are written with private permissions beneath
 `~/.local/state/personal-mcp-server/chatgpt-refresh/`. They contain only schema
-hashes, affected tool names, outcome, and a local screenshot; they are not
+hashes, affected tool names, refresh action, outcome, and a local screenshot;
+they are not
 uploaded. Login, CAPTCHA, MFA, permission prompts, confirmation dialogs, and
-schema details not exposed by the UI produce an actionable handoff.
+unexpected UI failures produce an actionable handoff.
 
 The script does not start or mutate conversations. After a successful refresh,
 start a new conversation, select Personal MCP, and rerun the affected prompts.

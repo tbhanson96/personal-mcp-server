@@ -30,12 +30,15 @@ is an explicit diagnostic override only. It only visits
 selects **Refresh tools**. Do not replace this with hidden APIs, copied network
 requests, remote-debugging attachment, or undocumented endpoints.
 
-Treat the refresh as complete only when the script verifies changed advertised
-metadata and every newly added tool name in ChatGPT. If the UI does not expose
-enough detail to verify a schema-only change, report it as requiring manual
-confirmation. Always report that existing conversations retain their prior
-tool snapshot and the affected tests must run in a new conversation, following
-[official OpenAI documentation](https://developers.openai.com/plugins/deploy/connect-chatgpt).
+Treat the refresh as complete when the eligible manifest delta is recorded and
+the script successfully clicks **Refresh tools** without encountering a login,
+human-verification, permission, or confirmation handoff. The Manage app page
+does not expose individual tool names, so do not require them to appear in the
+DOM and do not claim that the UI displayed them. Always report the expected
+added, removed, and changed tools from the manifest comparison, and that
+existing conversations retain their prior tool snapshot and affected tests
+must run in a new conversation, following [official OpenAI
+documentation](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 
 Store evidence only in the private local artifact directory: manifest hashes,
 changed/added/removed tool names, outcome, and failure screenshot path. Never

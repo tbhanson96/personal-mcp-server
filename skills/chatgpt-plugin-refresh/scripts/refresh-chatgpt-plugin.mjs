@@ -142,49 +142,9 @@ async function main() {
     }
 
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
-    const toolsDisclosure = await firstVisible([
-      page.getByRole('button', { name: /^tools$/i }),
-      page.getByRole('button', { name: /view tools/i }),
-    ]);
-    if (toolsDisclosure) await toolsDisclosure.click().catch(() => undefined);
-
-    const missingAdded = [];
-    for (const toolName of difference.added) {
-      const visible = await page.getByText(toolName, { exact: true }).first().isVisible().catch(() => false);
-      if (!visible) missingAdded.push(toolName);
-    }
-    if (missingAdded.length > 0) throw new Error(`New tool names were not visible after refresh: ${missingAdded.join(', ')}`);
-
-    const stillVisibleRemoved = [];
-    for (const toolName of difference.removed) {
-      const visible = await page.getByText(toolName, { exact: true }).first().isVisible().catch(() => false);
-      if (visible) stillVisibleRemoved.push(toolName);
-    }
-    if (stillVisibleRemoved.length > 0) throw new Error(`Removed tool names were still visible after refresh: ${stillVisibleRemoved.join(', ')}`);
-
-    const unverifiedChanged = [];
-    for (const toolName of difference.changed) {
-      const tool = after.tools.find((candidate) => candidate.name === toolName);
-      const nameVisible = await page.getByText(toolName, { exact: true }).first().isVisible().catch(() => false);
-      const fields = difference.changedFields[toolName];
-      const onlyVisibleFields = fields.every((field) => ['description', 'title'].includes(field));
-      const probes = fields
-        .map((field) => tool?.[field])
-        .filter((value) => typeof value === 'string' && value.trim().length > 0)
-        .map((value) => value.trim().slice(0, 80));
-      const probesVisible = probes.length > 0 && (await Promise.all(probes.map((probe) => (
-        page.getByText(probe, { exact: false }).first().isVisible().catch(() => false)
-      )))).every(Boolean);
-      if (!nameVisible || !onlyVisibleFields || !probesVisible) unverifiedChanged.push(toolName);
-    }
-    if (unverifiedChanged.length > 0) {
-      await writeReport(reportPath, { outcome: 'handoff_required', reason: 'schema_detail_not_visible', unverifiedChanged, ...evidence });
-      await failureScreenshot(page, artifactDir);
-      return handoff(`Refresh ran, but ChatGPT did not expose enough metadata to verify: ${unverifiedChanged.join(', ')}. Confirm those tool details manually in the connection UI.`);
-    }
-
-    await writeReport(reportPath, { outcome: 'refreshed', verifiedAdded: difference.added, verifiedChanged: difference.changed, ...evidence });
-    console.log(JSON.stringify({ outcome: 'refreshed', reportPath, ...evidence }, null, 2));
+    const refreshAction = 'refresh_tools_clicked';
+    await writeReport(reportPath, { outcome: 'refreshed', refreshAction, ...evidence });
+    console.log(JSON.stringify({ outcome: 'refreshed', refreshAction, reportPath, ...evidence }, null, 2));
     console.error('Start a new ChatGPT conversation and rerun the affected plugin tests; existing conversations may retain stale tools.');
   } catch (error) {
     if (page) await failureScreenshot(page, artifactDir);

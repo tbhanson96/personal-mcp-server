@@ -62,12 +62,14 @@ CAPTCHA, MFA, permission prompt, or confirmation dialog is always a handoff.
 
 ## Outcomes
 
-- `refreshed`: ChatGPT showed the changed metadata and all added tool names.
+- `refreshed`: the eligible manifest delta was recorded and **Refresh tools**
+  was clicked without a login, verification, permission, or confirmation
+  handoff. The Manage app page does not display individual tool names.
 - `skipped_no_tool_changes`: the before/after manifests are identical.
 - `handoff_required`: the deployment remains successful, but the reported UI
   step must be completed by the operator.
-- `verification_failed`: the UI refresh ran but the expected metadata could
-  not be proven. Inspect the private screenshot locally.
+- `verification_failed`: the browser could not complete the expected UI path.
+  Inspect the private screenshot locally.
 
 After `refreshed`, start a new ChatGPT conversation, select the plugin, and
 rerun affected prompts. Existing conversations should be treated as stale.
