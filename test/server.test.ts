@@ -21,6 +21,7 @@ describe('createToolDefinitions', () => {
       'personal_mcp_describe_tool',
       'personal_mcp_get_usage_guide',
       'personal_mcp_get_examples',
+      'personal_mcp_refresh_test',
       'home_assistant_get_config',
       'home_assistant_get_states',
       'home_assistant_get_state',
@@ -55,6 +56,24 @@ describe('createToolDefinitions', () => {
       'happy_start_and_prompt',
       'happy_stop_session',
     ]);
+  });
+
+  it('executes the temporary refresh test tool without mutating state', async () => {
+    const tool = createToolDefinitions(baseConfig).find((definition) => definition.tool.name === 'personal_mcp_refresh_test');
+
+    const result = await tool?.execute({ message: 'hello from the refresh test' });
+    const content = result?.content[0];
+
+    expect(tool?.tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(content?.type).toBe('text');
+    if (content?.type === 'text') {
+      expect(JSON.parse(content.text)).toEqual({
+        ok: true,
+        tool: 'personal_mcp_refresh_test',
+        message: 'hello from the refresh test',
+        note: 'ChatGPT invoked the temporary Personal MCP refresh test tool successfully.',
+      });
+    }
   });
 
   it('keeps tools registered when services are not configured', async () => {

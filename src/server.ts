@@ -13,6 +13,7 @@ import { homeAssistantTools } from './tools/homeAssistant.js';
 import { homeserverTools } from './tools/homeserver.js';
 import { happyTools } from './tools/happy.js';
 import { mealieTools } from './tools/mealie.js';
+import { refreshTestTools } from './tools/refreshTest.js';
 import { ToolDefinition } from './tools/types.js';
 import { vikunjaTools } from './tools/vikunja.js';
 import { advertisedTools, securityScopesForTool } from './toolSchemaManifest.js';
@@ -21,6 +22,7 @@ export { securityScopesForTool } from './toolSchemaManifest.js';
 
 export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
   const serviceTools = [
+    ...refreshTestTools(),
     ...homeAssistantTools(config.homeAssistant),
     ...homeserverTools(config.homeserver),
     ...mealieTools(config.mealie),
