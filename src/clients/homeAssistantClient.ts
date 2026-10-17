@@ -87,45 +87,40 @@ export class HomeAssistantClient {
     });
   }
 
-  async playSpotify(entityId: string, spotifyUri: string, source?: string): Promise<Record<string, unknown>> {
-    const player = (await this.getMediaPlayers(entityId))[0];
-    assertAvailable(player);
+  async playSpotify(spotifyUri: string): Promise<Record<string, unknown>> {
+    const player = await this.getDefaultSpotifyPlayer();
     assertCapability(player, 'play_media');
+    const source = spotifySource(player);
 
-    if (source) {
+    if (source.select) {
       assertCapability(player, 'select_source');
-      if (!player.sources?.includes(source)) {
-        throw new Error(`Spotify source is not available on ${entityId}. Available sources: ${(player.sources || []).join(', ') || 'none'}`);
-      }
       await this.callMediaPlayerService('select_source', {
-        entity_id: entityId,
-        source,
+        entity_id: player.entity_id,
+        source: source.name,
       });
     }
 
     const mediaContentType = spotifyUri.split(':')[1];
     await this.callMediaPlayerService('play_media', {
-      entity_id: entityId,
+      entity_id: player.entity_id,
       media_content_id: spotifyUri,
       media_content_type: mediaContentType,
     });
 
     return {
       success: true,
-      entity_id: entityId,
+      entity_id: player.entity_id,
       spotify_uri: spotifyUri,
       media_content_type: mediaContentType,
-      ...(source ? { source } : {}),
+      source: source.name,
     };
   }
 
   async controlMediaPlayer(
-    entityId: string,
     action: MediaPlayerAction,
     options: { seekPositionSeconds?: number; volumeLevel?: number } = {},
   ): Promise<Record<string, unknown>> {
-    const player = (await this.getMediaPlayers(entityId))[0];
-    assertAvailable(player);
+    const player = await this.getDefaultSpotifyPlayer();
     assertCapability(player, action);
 
     const service = {
@@ -143,17 +138,30 @@ export class HomeAssistantClient {
         : {};
 
     await this.callMediaPlayerService(service, {
-      entity_id: entityId,
+      entity_id: player.entity_id,
       ...actionData,
     });
 
     return {
       success: true,
-      entity_id: entityId,
+      entity_id: player.entity_id,
       action,
       ...(action === 'seek' ? { seek_position_seconds: options.seekPositionSeconds } : {}),
       ...(action === 'set_volume' ? { volume_level: options.volumeLevel } : {}),
     };
+  }
+
+  private async getDefaultSpotifyPlayer(): Promise<MediaPlayerSummary> {
+    const spotifyPlayers = (await this.getMediaPlayers()).filter(isSpotifyPlayer);
+    if (spotifyPlayers.length === 0) {
+      throw new Error('No Home Assistant Spotify media player is configured.');
+    }
+    if (spotifyPlayers.length > 1) {
+      throw new Error('Expected exactly one Home Assistant Spotify media player.');
+    }
+
+    assertAvailable(spotifyPlayers[0]);
+    return spotifyPlayers[0];
   }
 
   private callMediaPlayerService(service: string, data: Record<string, unknown>): Promise<unknown> {
@@ -222,4 +230,29 @@ function assertCapability(player: MediaPlayerSummary, capability: keyof MediaPla
   if (player.supported_features !== undefined && !player.capabilities[capability]) {
     throw new Error(`Media player ${player.entity_id} does not advertise support for ${capability}`);
   }
+}
+
+function isSpotifyPlayer(player: MediaPlayerSummary): boolean {
+  return player.entity_id.toLowerCase().includes('spotify')
+    || player.name?.toLowerCase().includes('spotify') === true;
+}
+
+function spotifySource(player: MediaPlayerSummary): { name: string; select: boolean } {
+  if (player.source) {
+    return { name: player.source, select: false };
+  }
+
+  const sources = player.sources || [];
+  const macMini = sources.find((source) => source.toLowerCase().includes('mac mini'));
+  if (macMini) {
+    return { name: macMini, select: true };
+  }
+  if (sources.length === 1) {
+    return { name: sources[0], select: true };
+  }
+  if (sources.length === 0) {
+    throw new Error(`No connected Spotify source is available on ${player.entity_id}.`);
+  }
+
+  throw new Error(`Expected one connected Spotify source on ${player.entity_id}.`);
 }

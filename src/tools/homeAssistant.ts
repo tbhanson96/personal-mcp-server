@@ -18,16 +18,13 @@ const MediaPlayersArgsSchema = z.object({
 });
 
 const PlaySpotifyArgsSchema = z.object({
-  entity_id: MediaPlayerEntityIdSchema,
   spotify_uri: z.string().regex(
     /^spotify:(track|album|playlist|episode):[A-Za-z0-9]+$/,
     'Expected a Spotify track, album, playlist, or episode URI',
   ),
-  source: z.string().trim().min(1).max(200).optional(),
 });
 
 const MediaPlayerControlArgsSchema = z.object({
-  entity_id: MediaPlayerEntityIdSchema,
   action: z.enum(['pause', 'resume', 'next', 'previous', 'seek', 'set_volume']),
   seek_position_seconds: z.number().finite().min(0).optional(),
   volume_level: z.number().finite().min(0).max(1).optional(),
@@ -163,32 +160,21 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
       tool: {
         name: 'home_assistant_play_spotify',
         title: 'Play Spotify Through Home Assistant',
-        description: 'Play an exact Spotify URI on a Home Assistant media_player. For Spotify integration entities, source optionally selects an exact available Spotify Connect device returned by home_assistant_get_media_players. Resolve a named song to a Spotify URI with Spotify search first.',
+        description: 'Play an exact Spotify URI on the single Home Assistant Spotify player, using its current connected device (normally the Mac mini). Resolve a named song to a Spotify URI with Spotify search first.',
         inputSchema: zodToJsonSchemaObject({
-          entity_id: {
-            type: 'string',
-            pattern: '^media_player\\.[a-z0-9_]+$',
-            description: 'Target Home Assistant media_player entity_id, usually the Spotify integration player.',
-          },
           spotify_uri: {
             type: 'string',
             pattern: '^spotify:(track|album|playlist|episode):[A-Za-z0-9]+$',
             description: 'Exact Spotify URI returned by Spotify search, for example spotify:track:4iV5W9uYEdYUVa79Axb7Rh.',
           },
-          source: {
-            type: 'string',
-            minLength: 1,
-            maxLength: 200,
-            description: 'Optional exact Spotify Connect source from this player\'s sources list.',
-          },
-        }, ['entity_id', 'spotify_uri']),
+        }, ['spotify_uri']),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       },
       securityScopes: [MCP_CONTROL_SCOPE],
       execute: async (args) => {
         const parsed = parseArgs(PlaySpotifyArgsSchema, args);
         return client
-          ? jsonResult(await client.playSpotify(parsed.entity_id, parsed.spotify_uri, parsed.source))
+          ? jsonResult(await client.playSpotify(parsed.spotify_uri))
           : disabledResult('Home Assistant');
       },
     },
@@ -196,13 +182,8 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
       tool: {
         name: 'home_assistant_control_media_player',
         title: 'Control Home Assistant Media Playback',
-        description: 'Pause, resume, skip, seek, or set volume on one Home Assistant media_player. Check home_assistant_get_media_players first because support varies by player and action.',
+        description: 'Pause, resume, skip, seek, or set volume on the single Home Assistant Spotify player and its current connected device.',
         inputSchema: zodToJsonSchemaObject({
-          entity_id: {
-            type: 'string',
-            pattern: '^media_player\\.[a-z0-9_]+$',
-            description: 'Exact Home Assistant media_player entity_id.',
-          },
           action: {
             type: 'string',
             enum: ['pause', 'resume', 'next', 'previous', 'seek', 'set_volume'],
@@ -218,14 +199,14 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
             maximum: 1,
             description: 'Volume from 0 (silent) to 1 (maximum); required only for set_volume.',
           },
-        }, ['entity_id', 'action']),
+        }, ['action']),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       },
       securityScopes: [MCP_CONTROL_SCOPE],
       execute: async (args) => {
         const parsed = parseArgs(MediaPlayerControlArgsSchema, args);
         return client
-          ? jsonResult(await client.controlMediaPlayer(parsed.entity_id, parsed.action, {
+          ? jsonResult(await client.controlMediaPlayer(parsed.action, {
             seekPositionSeconds: parsed.seek_position_seconds,
             volumeLevel: parsed.volume_level,
           }))

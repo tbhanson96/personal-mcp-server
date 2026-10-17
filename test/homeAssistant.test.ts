@@ -76,14 +76,15 @@ describe('Home Assistant media playback tools', () => {
     })]);
   });
 
-  it('selects an exact Spotify source before playing an exact Spotify URI', async () => {
-    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+  it('plays on the single Spotify player and keeps its current connected source', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, [spotifyState({
+      source: 'Tim’s Mac mini',
+      source_list: ['Tim’s Mac mini'],
+    })]);
     const tool = toolNamed(baseUrl, 'home_assistant_play_spotify');
 
     const result = await tool.execute({
-      entity_id: 'media_player.spotify_living_room',
       spotify_uri: 'spotify:track:4iV5W9uYEdYUVa79Axb7Rh',
-      source: 'Living Room speaker',
     });
 
     expect(resultJson(result)).toEqual({
@@ -91,19 +92,13 @@ describe('Home Assistant media playback tools', () => {
       entity_id: 'media_player.spotify_living_room',
       spotify_uri: 'spotify:track:4iV5W9uYEdYUVa79Axb7Rh',
       media_content_type: 'track',
-      source: 'Living Room speaker',
+      source: 'Tim’s Mac mini',
     });
     expect(requests).toEqual([
       expect.objectContaining({
         method: 'GET',
-        url: '/api/states/media_player.spotify_living_room',
+        url: '/api/states',
         authorization: 'Bearer ha-secret',
-      }),
-      expect.objectContaining({
-        method: 'POST',
-        url: '/api/services/media_player/select_source',
-        authorization: 'Bearer ha-secret',
-        body: { entity_id: 'media_player.spotify_living_room', source: 'Living Room speaker' },
       }),
       expect.objectContaining({
         method: 'POST',
@@ -118,17 +113,34 @@ describe('Home Assistant media playback tools', () => {
     ]);
   });
 
+  it('selects the Mac mini automatically when no source is currently connected', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, [spotifyState({
+      source_list: ['Tim’s Mac mini', 'Other'],
+    })]);
+    const tool = toolNamed(baseUrl, 'home_assistant_play_spotify');
+
+    await tool.execute({ spotify_uri: 'spotify:track:4iV5W9uYEdYUVa79Axb7Rh' });
+
+    expect(requests.filter(({ method }) => method === 'POST')).toEqual([
+      expect.objectContaining({
+        url: '/api/services/media_player/select_source',
+        body: { entity_id: 'media_player.spotify_living_room', source: 'Tim’s Mac mini' },
+      }),
+      expect.objectContaining({ url: '/api/services/media_player/play_media' }),
+    ]);
+  });
+
   it('maps bounded playback actions to Home Assistant media-player services', async () => {
-    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, [spotifyState({ source: 'Tim’s Mac mini' })]);
     const tool = toolNamed(baseUrl, 'home_assistant_control_media_player');
     const entity_id = 'media_player.spotify_living_room';
 
-    await tool.execute({ entity_id, action: 'pause' });
-    await tool.execute({ entity_id, action: 'resume' });
-    await tool.execute({ entity_id, action: 'next' });
-    await tool.execute({ entity_id, action: 'previous' });
-    await tool.execute({ entity_id, action: 'seek', seek_position_seconds: 73.5 });
-    await tool.execute({ entity_id, action: 'set_volume', volume_level: 0.42 });
+    await tool.execute({ action: 'pause' });
+    await tool.execute({ action: 'resume' });
+    await tool.execute({ action: 'next' });
+    await tool.execute({ action: 'previous' });
+    await tool.execute({ action: 'seek', seek_position_seconds: 73.5 });
+    await tool.execute({ action: 'set_volume', volume_level: 0.42 });
 
     expect(requests.filter(({ method }) => method === 'POST').map(({ url, body }) => ({ url, body }))).toEqual([
       { url: '/api/services/media_player/media_pause', body: { entity_id } },
@@ -140,35 +152,30 @@ describe('Home Assistant media playback tools', () => {
     ]);
   });
 
-  it('rejects unavailable Spotify Connect sources before changing playback', async () => {
+  it('fails safely if no Spotify player exists', async () => {
     const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
     const tool = toolNamed(baseUrl, 'home_assistant_play_spotify');
 
     await expect(tool.execute({
-      entity_id: 'media_player.spotify_living_room',
       spotify_uri: 'spotify:track:4iV5W9uYEdYUVa79Axb7Rh',
-      source: 'Unknown speaker',
-    })).rejects.toThrow('Spotify source is not available');
+    })).rejects.toThrow('No Home Assistant Spotify media player');
 
     expect(requests).toHaveLength(1);
     expect(requests[0].method).toBe('GET');
   });
 
-  it('rejects arbitrary entities, invented URIs, and incomplete action arguments before network calls', async () => {
+  it('rejects invented URIs and incomplete action arguments before network calls', async () => {
     const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
     const playTool = toolNamed(baseUrl, 'home_assistant_play_spotify');
     const controlTool = toolNamed(baseUrl, 'home_assistant_control_media_player');
 
     await expect(playTool.execute({
-      entity_id: 'script.arbitrary_service',
       spotify_uri: 'https://example.com/audio.mp3',
     })).rejects.toThrow();
     await expect(controlTool.execute({
-      entity_id: 'media_player.spotify_living_room',
       action: 'seek',
     })).rejects.toThrow();
     await expect(controlTool.execute({
-      entity_id: 'media_player.spotify_living_room',
       action: 'set_volume',
       volume_level: 2,
     })).rejects.toThrow();
@@ -184,6 +191,8 @@ describe('Home Assistant media playback tools', () => {
       expect(tool?.tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
       expect(tool?.tool.inputSchema.properties).not.toHaveProperty('token');
       expect(tool?.tool.inputSchema.properties).not.toHaveProperty('password');
+      expect(tool?.tool.inputSchema.properties).not.toHaveProperty('entity_id');
+      expect(tool?.tool.inputSchema.properties).not.toHaveProperty('source');
     }
   });
 });
@@ -244,4 +253,17 @@ async function startHomeAssistantStub(
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
   return { baseUrl: `http://127.0.0.1:${address.port}`, requests };
+}
+
+function spotifyState(attributes: Record<string, unknown> = {}) {
+  return {
+    entity_id: 'media_player.spotify_living_room',
+    state: 'idle',
+    attributes: {
+      friendly_name: 'Spotify Living Room',
+      supported_features: 18999,
+      source_list: ['Tim’s Mac mini'],
+      ...attributes,
+    },
+  };
 }

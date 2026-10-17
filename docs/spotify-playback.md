@@ -5,9 +5,9 @@ The Personal MCP server exposes three media-player tools:
 - `home_assistant_get_media_players` returns sanitized playback state,
   supported actions, and source names. It can list every player or inspect one
   exact `media_player.*` entity.
-- `home_assistant_play_spotify` optionally selects a Spotify Connect source,
-  then asks Home Assistant to play an exact Spotify track, album, playlist, or
-  episode URI.
+- `home_assistant_play_spotify` resolves the single Spotify player and its
+  connected source, then asks Home Assistant to play an exact track, album,
+  playlist, or episode URI.
 - `home_assistant_control_media_player` performs one bounded action: pause,
   resume, next, previous, seek, or set volume.
 
@@ -19,20 +19,17 @@ Arlo, and Emi Grace in the living room”:
 
 1. Use Spotify search to resolve the requested recording. Preserve the exact
    `spotify:track:*` URI returned by Spotify; do not invent an ID.
-2. Call `home_assistant_get_media_players` and select the intended Spotify
-   integration entity. If a particular speaker is requested, select an exact
-   value from that entity's `sources` list.
-3. Call `home_assistant_play_spotify` with the entity, URI, and optional source.
-4. Use `home_assistant_get_media_players` again if playback state needs to be
+2. Call `home_assistant_play_spotify` with that URI. The server automatically
+   uses the single Spotify integration player and its current connected device,
+   normally the Mac mini.
+3. Use `home_assistant_get_media_players` again if playback state needs to be
    confirmed.
 
 Example arguments after the lookup steps:
 
 ```json
 {
-  "entity_id": "media_player.spotify_living_room",
-  "spotify_uri": "spotify:track:<id returned by Spotify search>",
-  "source": "Living Room speaker"
+  "spotify_uri": "spotify:track:<id returned by Spotify search>"
 }
 ```
 
@@ -46,8 +43,8 @@ Example arguments after the lookup steps:
   sent only to the configured `HOME_ASSISTANT_URL` as a bearer token.
 - Tool schemas accept no Home Assistant or Spotify credentials.
 - Playback writes are allowlisted to six `media_player` services plus
-  `select_source` and `play_media`. Entity IDs, Spotify URI forms, volume, seek
-  position, and action names are validated before any network request.
+  `select_source` and `play_media`. Spotify URI forms, volume, seek position,
+  and action names are validated before any network request.
 - State results use an attribute allowlist. Home Assistant attributes such as
   entity-picture proxy URLs or tokens are not returned by the semantic media
   tools.
@@ -69,7 +66,8 @@ version support sufficiently granular user permissions.
 
 Spotify playback optionally calls `media_player.select_source` and then calls
 `media_player.play_media`, deriving `media_content_type` from the validated
-Spotify URI.
+Spotify URI. It keeps the current source when one is connected; otherwise it
+prefers a source containing “Mac mini,” then a sole available source.
 
 ## Limitations
 
@@ -79,9 +77,11 @@ Spotify URI.
 - The Spotify integration can select only devices currently known to the
   Spotify API. A speaker that is asleep, unavailable, or absent from `sources`
   cannot be selected by this server.
-- Home Assistant integrations expose different `supported_features`. Callers
-  should inspect `capabilities`; Home Assistant remains the final authority and
-  may reject an action that a particular device cannot perform.
+- The implementation assumes exactly one Home Assistant Spotify player and one
+  connected Spotify device. It fails safely instead of asking for a selection
+  if that invariant is ever violated.
+- Home Assistant remains the final authority and may reject an action that its
+  Spotify player cannot perform.
 - Seek support and current position are integration-dependent. Position state
   can be slightly stale between Home Assistant updates.
 - Source selection and playback are two sequential Home Assistant calls, not
