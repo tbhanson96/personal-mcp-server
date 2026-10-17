@@ -23,6 +23,9 @@ describe('createToolDefinitions', () => {
       'home_assistant_get_states',
       'home_assistant_get_state',
       'home_assistant_control_entity',
+      'home_assistant_get_media_players',
+      'home_assistant_play_spotify',
+      'home_assistant_control_media_player',
       'homeserver_list_files',
       'homeserver_list_ebooks',
       'homeserver_search_ebooks',
@@ -75,13 +78,19 @@ describe('createToolDefinitions', () => {
     expect(properties).not.toHaveProperty('repeat_as_new');
   });
 
-  it('advertises read scope for every tool', () => {
+  it('advertises read scope by default and control scope for playback mutations', () => {
     const tools = createToolDefinitions(baseConfig);
     const listTasks = tools.find((definition) => definition.tool.name === 'vikunja_list_tasks');
     const createTask = tools.find((definition) => definition.tool.name === 'vikunja_create_task');
+    const getPlayers = tools.find((definition) => definition.tool.name === 'home_assistant_get_media_players');
+    const playSpotify = tools.find((definition) => definition.tool.name === 'home_assistant_play_spotify');
+    const controlPlayer = tools.find((definition) => definition.tool.name === 'home_assistant_control_media_player');
 
     expect(listTasks && securityScopesForTool(listTasks)).toEqual(['mcp:read']);
     expect(createTask && securityScopesForTool(createTask)).toEqual(['mcp:read']);
+    expect(getPlayers && securityScopesForTool(getPlayers)).toEqual(['mcp:read']);
+    expect(playSpotify && securityScopesForTool(playSpotify)).toEqual(['mcp:control']);
+    expect(controlPlayer && securityScopesForTool(controlPlayer)).toEqual(['mcp:control']);
   });
 
   it('distinguishes Happy host paths from homeserver API paths', () => {
@@ -114,6 +123,7 @@ describe('createToolDefinitions', () => {
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('vikunja_create_task');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('personal_mcp_describe_tool');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('homeserver_get_health_statistics');
+      expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_play_spotify');
     }
   });
 

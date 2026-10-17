@@ -6,7 +6,7 @@ It can also control the host Happy daemon through a restricted Unix-socket
 bridge. The container never receives `~/.happy`, Happy credentials, the Docker
 socket, or host process access.
 
-This project intentionally starts with read-only tools. Write tools should be added with explicit MCP annotations and service-level allowlists.
+State-changing tools are bounded semantic operations with explicit MCP annotations and service-level allowlists; the server does not expose raw service-call tools.
 
 ## Development
 
@@ -35,6 +35,11 @@ or:
 x-api-key: <PERSONAL_MCP_API_KEY>
 ```
 
+OAuth advertises `mcp:read` and `mcp:control` separately. Playback mutations
+require `mcp:control`; read-only player discovery requires `mcp:read`. The
+server API key grants both scopes. Home Assistant credentials remain in the
+server environment and are never accepted as tool arguments.
+
 ## Deployment
 
 Copy the example env files into `~/.config/personal-mcp-server/`, fill in secrets, then copy or symlink the service unit:
@@ -53,6 +58,10 @@ systemctl --user enable --now personal-mcp-server.service
 - `home_assistant_get_config`
 - `home_assistant_get_states`
 - `home_assistant_get_state`
+- `home_assistant_control_entity`
+- `home_assistant_get_media_players`
+- `home_assistant_play_spotify`
+- `home_assistant_control_media_player`
 - `homeserver_list_files`
 - `homeserver_list_ebooks`
 - `homeserver_search_ebooks`
@@ -72,6 +81,9 @@ systemctl --user enable --now personal-mcp-server.service
 - `happy_get_session_messages`
 - `happy_start_and_prompt`
 - `happy_stop_session`
+
+See [Spotify playback through Home Assistant](docs/spotify-playback.md) for the
+tool workflow, security model, supported actions, and device limitations.
 
 ## Happy bridge
 

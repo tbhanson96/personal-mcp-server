@@ -1,4 +1,5 @@
 import { ServiceConfig } from '../config.js';
+import { MCP_CONTROL_SCOPE } from '../auth.js';
 import { HttpClient } from '../http.js';
 import { HomeAssistantClient } from '../clients/homeAssistantClient.js';
 import { EmptyArgsSchema, parseArgs, zodToJsonSchemaObject } from '../schemas/common.js';
@@ -7,6 +8,58 @@ import { z } from 'zod';
 
 const StateArgsSchema = z.object({
   entity_id: z.string().min(1),
+});
+
+const MediaPlayerEntityIdSchema = z.string()
+  .regex(/^media_player\.[a-z0-9_]+$/, 'Expected a media_player entity_id');
+
+const MediaPlayersArgsSchema = z.object({
+  entity_id: MediaPlayerEntityIdSchema.optional(),
+});
+
+const PlaySpotifyArgsSchema = z.object({
+  entity_id: MediaPlayerEntityIdSchema,
+  spotify_uri: z.string().regex(
+    /^spotify:(track|album|playlist|episode):[A-Za-z0-9]+$/,
+    'Expected a Spotify track, album, playlist, or episode URI',
+  ),
+  source: z.string().trim().min(1).max(200).optional(),
+});
+
+const MediaPlayerControlArgsSchema = z.object({
+  entity_id: MediaPlayerEntityIdSchema,
+  action: z.enum(['pause', 'resume', 'next', 'previous', 'seek', 'set_volume']),
+  seek_position_seconds: z.number().finite().min(0).optional(),
+  volume_level: z.number().finite().min(0).max(1).optional(),
+}).superRefine((value, context) => {
+  if (value.action === 'seek' && value.seek_position_seconds === undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['seek_position_seconds'],
+      message: 'seek_position_seconds is required for seek.',
+    });
+  }
+  if (value.action !== 'seek' && value.seek_position_seconds !== undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['seek_position_seconds'],
+      message: 'seek_position_seconds is only valid for seek.',
+    });
+  }
+  if (value.action === 'set_volume' && value.volume_level === undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['volume_level'],
+      message: 'volume_level is required for set_volume.',
+    });
+  }
+  if (value.action !== 'set_volume' && value.volume_level !== undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['volume_level'],
+      message: 'volume_level is only valid for set_volume.',
+    });
+  }
 });
 
 const ControlEntityArgsSchema = z.object({
@@ -85,6 +138,98 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
       execute: async (args) => {
         const parsed = parseArgs(ControlEntityArgsSchema, args);
         return client ? jsonResult(await client.controlEntity(parsed.entity_id, parsed.action)) : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
+        name: 'home_assistant_get_media_players',
+        title: 'Get Home Assistant Media Players',
+        description: 'List sanitized media-player playback state, available Spotify Connect sources, and supported playback capabilities. Optionally return one media_player entity.',
+        inputSchema: zodToJsonSchemaObject({
+          entity_id: {
+            type: 'string',
+            pattern: '^media_player\\.[a-z0-9_]+$',
+            description: 'Optional exact media_player entity_id. Omit to list all players.',
+          },
+        }),
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      },
+      execute: async (args) => {
+        const parsed = parseArgs(MediaPlayersArgsSchema, args);
+        return client ? jsonResult(await client.getMediaPlayers(parsed.entity_id)) : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
+        name: 'home_assistant_play_spotify',
+        title: 'Play Spotify Through Home Assistant',
+        description: 'Play an exact Spotify URI on a Home Assistant media_player. For Spotify integration entities, source optionally selects an exact available Spotify Connect device returned by home_assistant_get_media_players. Resolve a named song to a Spotify URI with Spotify search first.',
+        inputSchema: zodToJsonSchemaObject({
+          entity_id: {
+            type: 'string',
+            pattern: '^media_player\\.[a-z0-9_]+$',
+            description: 'Target Home Assistant media_player entity_id, usually the Spotify integration player.',
+          },
+          spotify_uri: {
+            type: 'string',
+            pattern: '^spotify:(track|album|playlist|episode):[A-Za-z0-9]+$',
+            description: 'Exact Spotify URI returned by Spotify search, for example spotify:track:4iV5W9uYEdYUVa79Axb7Rh.',
+          },
+          source: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'Optional exact Spotify Connect source from this player\'s sources list.',
+          },
+        }, ['entity_id', 'spotify_uri']),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      },
+      securityScopes: [MCP_CONTROL_SCOPE],
+      execute: async (args) => {
+        const parsed = parseArgs(PlaySpotifyArgsSchema, args);
+        return client
+          ? jsonResult(await client.playSpotify(parsed.entity_id, parsed.spotify_uri, parsed.source))
+          : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
+        name: 'home_assistant_control_media_player',
+        title: 'Control Home Assistant Media Playback',
+        description: 'Pause, resume, skip, seek, or set volume on one Home Assistant media_player. Check home_assistant_get_media_players first because support varies by player and action.',
+        inputSchema: zodToJsonSchemaObject({
+          entity_id: {
+            type: 'string',
+            pattern: '^media_player\\.[a-z0-9_]+$',
+            description: 'Exact Home Assistant media_player entity_id.',
+          },
+          action: {
+            type: 'string',
+            enum: ['pause', 'resume', 'next', 'previous', 'seek', 'set_volume'],
+          },
+          seek_position_seconds: {
+            type: 'number',
+            minimum: 0,
+            description: 'Absolute playback position in seconds; required only for seek.',
+          },
+          volume_level: {
+            type: 'number',
+            minimum: 0,
+            maximum: 1,
+            description: 'Volume from 0 (silent) to 1 (maximum); required only for set_volume.',
+          },
+        }, ['entity_id', 'action']),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      },
+      securityScopes: [MCP_CONTROL_SCOPE],
+      execute: async (args) => {
+        const parsed = parseArgs(MediaPlayerControlArgsSchema, args);
+        return client
+          ? jsonResult(await client.controlMediaPlayer(parsed.entity_id, parsed.action, {
+            seekPositionSeconds: parsed.seek_position_seconds,
+            volumeLevel: parsed.volume_level,
+          }))
+          : disabledResult('Home Assistant');
       },
     },
   ];

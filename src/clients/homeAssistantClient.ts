@@ -1,5 +1,58 @@
 import { HttpClient } from '../http.js';
 
+export type MediaPlayerAction = 'pause' | 'resume' | 'next' | 'previous' | 'seek' | 'set_volume';
+
+type HomeAssistantState = {
+  entity_id: string;
+  state: string;
+  last_changed?: string;
+  last_updated?: string;
+  attributes?: Record<string, unknown>;
+};
+
+export type MediaPlayerSummary = {
+  entity_id: string;
+  name?: string;
+  state: string;
+  available: boolean;
+  device_class?: string;
+  volume_level?: number;
+  is_volume_muted?: boolean;
+  source?: string;
+  sources?: string[];
+  media_content_type?: string;
+  media_title?: string;
+  media_artist?: string;
+  media_album_name?: string;
+  media_duration_seconds?: number;
+  media_position_seconds?: number;
+  media_position_updated_at?: string;
+  supported_features?: number;
+  capabilities: {
+    pause: boolean;
+    resume: boolean;
+    next: boolean;
+    previous: boolean;
+    seek: boolean;
+    set_volume: boolean;
+    select_source: boolean;
+    play_media: boolean;
+  };
+  last_changed?: string;
+  last_updated?: string;
+};
+
+const MEDIA_PLAYER_FEATURE = {
+  pause: 1,
+  seek: 2,
+  set_volume: 4,
+  previous: 16,
+  next: 32,
+  play_media: 512,
+  select_source: 2048,
+  resume: 16384,
+} as const;
+
 export class HomeAssistantClient {
   constructor(private readonly http: HttpClient) {}
 
@@ -15,10 +68,158 @@ export class HomeAssistantClient {
     return this.http.get(`/api/states/${encodeURIComponent(entityId)}`);
   }
 
+  async getMediaPlayers(entityId?: string): Promise<MediaPlayerSummary[]> {
+    if (entityId) {
+      const state = await this.http.get<HomeAssistantState>(`/api/states/${encodeURIComponent(entityId)}`);
+      return [mediaPlayerSummary(state)];
+    }
+
+    const states = await this.http.get<HomeAssistantState[]>('/api/states');
+    return states
+      .filter((state) => state.entity_id.startsWith('media_player.'))
+      .map(mediaPlayerSummary);
+  }
+
   controlEntity(entityId: string, action: 'turn_on' | 'turn_off' | 'toggle'): Promise<unknown> {
     const domain = entityId.split('.')[0];
     return this.http.post(`/api/services/${encodeURIComponent(domain)}/${action}`, {
       entity_id: entityId,
     });
+  }
+
+  async playSpotify(entityId: string, spotifyUri: string, source?: string): Promise<Record<string, unknown>> {
+    const player = (await this.getMediaPlayers(entityId))[0];
+    assertAvailable(player);
+    assertCapability(player, 'play_media');
+
+    if (source) {
+      assertCapability(player, 'select_source');
+      if (!player.sources?.includes(source)) {
+        throw new Error(`Spotify source is not available on ${entityId}. Available sources: ${(player.sources || []).join(', ') || 'none'}`);
+      }
+      await this.callMediaPlayerService('select_source', {
+        entity_id: entityId,
+        source,
+      });
+    }
+
+    const mediaContentType = spotifyUri.split(':')[1];
+    await this.callMediaPlayerService('play_media', {
+      entity_id: entityId,
+      media_content_id: spotifyUri,
+      media_content_type: mediaContentType,
+    });
+
+    return {
+      success: true,
+      entity_id: entityId,
+      spotify_uri: spotifyUri,
+      media_content_type: mediaContentType,
+      ...(source ? { source } : {}),
+    };
+  }
+
+  async controlMediaPlayer(
+    entityId: string,
+    action: MediaPlayerAction,
+    options: { seekPositionSeconds?: number; volumeLevel?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    const player = (await this.getMediaPlayers(entityId))[0];
+    assertAvailable(player);
+    assertCapability(player, action);
+
+    const service = {
+      pause: 'media_pause',
+      resume: 'media_play',
+      next: 'media_next_track',
+      previous: 'media_previous_track',
+      seek: 'media_seek',
+      set_volume: 'volume_set',
+    }[action];
+    const actionData = action === 'seek'
+      ? { seek_position: options.seekPositionSeconds }
+      : action === 'set_volume'
+        ? { volume_level: options.volumeLevel }
+        : {};
+
+    await this.callMediaPlayerService(service, {
+      entity_id: entityId,
+      ...actionData,
+    });
+
+    return {
+      success: true,
+      entity_id: entityId,
+      action,
+      ...(action === 'seek' ? { seek_position_seconds: options.seekPositionSeconds } : {}),
+      ...(action === 'set_volume' ? { volume_level: options.volumeLevel } : {}),
+    };
+  }
+
+  private callMediaPlayerService(service: string, data: Record<string, unknown>): Promise<unknown> {
+    return this.http.post(`/api/services/media_player/${service}`, data);
+  }
+}
+
+function mediaPlayerSummary(state: HomeAssistantState): MediaPlayerSummary {
+  const attributes = state.attributes || {};
+  const supportedFeatures = numberAttribute(attributes, 'supported_features');
+
+  return {
+    entity_id: state.entity_id,
+    ...optionalString('name', attributes.friendly_name),
+    state: state.state,
+    available: state.state !== 'unavailable',
+    ...optionalString('device_class', attributes.device_class),
+    ...optionalNumber('volume_level', attributes.volume_level),
+    ...optionalBoolean('is_volume_muted', attributes.is_volume_muted),
+    ...optionalString('source', attributes.source),
+    ...(isStringArray(attributes.source_list) ? { sources: attributes.source_list } : {}),
+    ...optionalString('media_content_type', attributes.media_content_type),
+    ...optionalString('media_title', attributes.media_title),
+    ...optionalString('media_artist', attributes.media_artist),
+    ...optionalString('media_album_name', attributes.media_album_name),
+    ...optionalNumber('media_duration_seconds', attributes.media_duration),
+    ...optionalNumber('media_position_seconds', attributes.media_position),
+    ...optionalString('media_position_updated_at', attributes.media_position_updated_at),
+    ...(supportedFeatures === undefined ? {} : { supported_features: supportedFeatures }),
+    capabilities: Object.fromEntries(Object.entries(MEDIA_PLAYER_FEATURE).map(([name, flag]) => [
+      name,
+      supportedFeatures !== undefined && (supportedFeatures & flag) === flag,
+    ])) as MediaPlayerSummary['capabilities'],
+    ...(state.last_changed ? { last_changed: state.last_changed } : {}),
+    ...(state.last_updated ? { last_updated: state.last_updated } : {}),
+  };
+}
+
+function numberAttribute(attributes: Record<string, unknown>, key: string): number | undefined {
+  return typeof attributes[key] === 'number' ? attributes[key] : undefined;
+}
+
+function optionalString<Key extends string>(key: Key, value: unknown): Partial<Record<Key, string>> {
+  return typeof value === 'string' ? { [key]: value } as Record<Key, string> : {};
+}
+
+function optionalNumber<Key extends string>(key: Key, value: unknown): Partial<Record<Key, number>> {
+  return typeof value === 'number' ? { [key]: value } as Record<Key, number> : {};
+}
+
+function optionalBoolean<Key extends string>(key: Key, value: unknown): Partial<Record<Key, boolean>> {
+  return typeof value === 'boolean' ? { [key]: value } as Record<Key, boolean> : {};
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function assertAvailable(player: MediaPlayerSummary): void {
+  if (!player.available) {
+    throw new Error(`Media player is unavailable: ${player.entity_id}`);
+  }
+}
+
+function assertCapability(player: MediaPlayerSummary, capability: keyof MediaPlayerSummary['capabilities']): void {
+  if (player.supported_features !== undefined && !player.capabilities[capability]) {
+    throw new Error(`Media player ${player.entity_id} does not advertise support for ${capability}`);
   }
 }

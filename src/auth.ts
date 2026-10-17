@@ -21,7 +21,8 @@ export type RegisteredClient = {
 const authorizationCodes = new Map<string, AuthorizationCode>();
 const registeredClients = new Map<string, RegisteredClient>();
 export const MCP_READ_SCOPE = 'mcp:read';
-const supportedScopes = [MCP_READ_SCOPE] as const;
+export const MCP_CONTROL_SCOPE = 'mcp:control';
+const supportedScopes = [MCP_READ_SCOPE, MCP_CONTROL_SCOPE] as const;
 const defaultScope = MCP_READ_SCOPE;
 
 export type McpAuthContext = {
@@ -64,7 +65,7 @@ export function getMcpAuthContext(
 ): McpAuthContext | undefined {
   const token = bearerToken(authorizationHeader);
   if (tokenMatches(token, config.mcpApiKey) || tokenMatches(apiKeyHeader, config.mcpApiKey)) {
-    return { scopes: [MCP_READ_SCOPE] };
+    return { scopes: [...supportedScopes] };
   }
 
   return oauthAccessTokenContext(token, config);

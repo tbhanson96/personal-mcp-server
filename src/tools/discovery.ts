@@ -40,6 +40,15 @@ const examples = [
     arguments: { entity_id: 'light.living_room_2', action: 'turn_on' },
   },
   {
+    userRequest: 'Play Through My System by Its Murph, Arlo, and Emi Grace on the living room Spotify player.',
+    preferredTool: 'home_assistant_play_spotify',
+    arguments: {
+      entity_id: '<Spotify media_player entity_id from home_assistant_get_media_players>',
+      spotify_uri: '<exact spotify:track URI from Spotify search>',
+      source: '<optional exact source from the selected player>',
+    },
+  },
+  {
     userRequest: 'What was my highest heart rate yesterday?',
     preferredTool: 'homeserver_get_health_statistics',
     arguments: {
@@ -96,6 +105,33 @@ const metadataByToolName: Record<string, ToolMetadata> = {
     examples: ['Turn on light.living_room_2.', 'Toggle an input_boolean helper.'],
     relatedTools: ['home_assistant_get_states', 'home_assistant_get_state'],
     workflowNotes: ['Use get_states first if the user names a device but not an entity_id. Scenes only support turn_on.'],
+    changesState: true,
+  },
+  home_assistant_get_media_players: {
+    category: 'home_assistant',
+    tags: ['home_assistant', 'media_player', 'spotify', 'playback', 'state', 'read'],
+    examples: ['List media players and Spotify Connect sources.', 'What is playing in the living room?'],
+    relatedTools: ['home_assistant_play_spotify', 'home_assistant_control_media_player'],
+    workflowNotes: ['Use capabilities to check whether a player supports the requested action. Source names must match a value in sources exactly.'],
+    changesState: false,
+  },
+  home_assistant_play_spotify: {
+    category: 'home_assistant',
+    tags: ['home_assistant', 'media_player', 'spotify', 'playback', 'play'],
+    examples: ['Play an exact spotify:track URI on the living room Spotify player.'],
+    relatedTools: ['home_assistant_get_media_players', 'home_assistant_control_media_player'],
+    workflowNotes: [
+      'Resolve a named song with Spotify search first and pass through the returned URI; this server never receives Spotify credentials.',
+      'Use home_assistant_get_media_players to resolve the entity_id and an optional exact Spotify Connect source before playback.',
+    ],
+    changesState: true,
+  },
+  home_assistant_control_media_player: {
+    category: 'home_assistant',
+    tags: ['home_assistant', 'media_player', 'spotify', 'playback', 'pause', 'resume', 'skip', 'seek', 'volume'],
+    examples: ['Pause the living room Spotify player.', 'Seek to 60 seconds.', 'Set volume to 0.35.'],
+    relatedTools: ['home_assistant_get_media_players', 'home_assistant_play_spotify'],
+    workflowNotes: ['Check the player capabilities first. seek_position_seconds is absolute; volume_level ranges from 0 to 1.'],
     changesState: true,
   },
   homeserver_list_files: {
@@ -416,7 +452,8 @@ function usageGuide() {
     workflows: [
       'For named Vikunja projects or tasks, list projects or tasks first to resolve ids before create/update/complete operations.',
       'For Mealie shopping items, list shopping lists first when the user names a list instead of providing a shopping_list_id.',
-      'For Home Assistant device names, list states first to identify the correct entity_id.',
+      'For Home Assistant device names, list states first to identify the correct entity_id. For playback, prefer home_assistant_get_media_players because it returns sanitized state, capabilities, and sources.',
+      'For a named Spotify song, search Spotify first, then pass the exact returned Spotify URI to home_assistant_play_spotify; never invent a URI.',
       'For Apple Health questions, use the health catalog to resolve metric names, statistics for aggregate questions, raw metric query for graphable samples, and sleep data for sleep durations.',
     ],
     safety: [

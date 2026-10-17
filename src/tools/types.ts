@@ -4,6 +4,7 @@ export type ToolDefinition = {
   tool: Tool;
   execute: (args: Record<string, unknown>) => Promise<CallToolResult>;
   metadata?: ToolMetadata;
+  securityScopes?: string[];
 };
 
 export type ToolMetadata = {

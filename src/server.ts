@@ -6,7 +6,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { AppConfig } from './config.js';
-import { MCP_READ_SCOPE } from './auth.js';
+import { MCP_CONTROL_SCOPE, MCP_READ_SCOPE } from './auth.js';
 import { logError, logInfo, sanitizeForLog } from './logging.js';
 import { discoveryTools } from './tools/discovery.js';
 import { homeAssistantTools } from './tools/homeAssistant.js';
@@ -31,7 +31,10 @@ export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
   ];
 }
 
-export function createMcpServer(config: AppConfig): Server {
+export function createMcpServer(
+  config: AppConfig,
+  grantedScopes: string[] = [MCP_READ_SCOPE, MCP_CONTROL_SCOPE],
+): Server {
   const tools = createToolDefinitions(config);
   const toolsByName = new Map(tools.map((definition) => [definition.tool.name, definition]));
 
@@ -87,6 +90,12 @@ export function createMcpServer(config: AppConfig): Server {
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
     }
 
+    const requiredScopes = securityScopesForTool(definition);
+    const missingScopes = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
+    if (missingScopes.length > 0) {
+      throw new McpError(ErrorCode.InvalidRequest, `Insufficient OAuth scope. Required: ${missingScopes.join(' ')}`);
+    }
+
     logInfo('mcp.tool.call.started', {
       toolName: request.params.name,
       arguments: sanitizeForLog(request.params.arguments || {}),
@@ -107,5 +116,5 @@ export function createMcpServer(config: AppConfig): Server {
 }
 
 export function securityScopesForTool(definition: ToolDefinition): string[] {
-  return [MCP_READ_SCOPE];
+  return definition.securityScopes ?? [MCP_READ_SCOPE];
 }
