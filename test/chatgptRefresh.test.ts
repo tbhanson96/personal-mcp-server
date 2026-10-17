@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error The executable JavaScript skill intentionally has no package declaration.
-import { compareManifests, environmentFindings } from '../skills/chatgpt-plugin-refresh/scripts/refresh-chatgpt-plugin.mjs';
+import { browserLaunchOptions, compareManifests, environmentFindings } from '../skills/chatgpt-plugin-refresh/scripts/refresh-chatgpt-plugin.mjs';
 
 describe('ChatGPT plugin refresh guard', () => {
   it('detects added, removed, and metadata-changed tools', () => {
@@ -26,5 +26,14 @@ describe('ChatGPT plugin refresh guard', () => {
       'No graphical display is available; run from an interactive desktop or explicitly opt into headless mode after manual profile setup.',
     ]);
     expect(environmentFindings({ executablePath: '/chromium', profileDir: '/profile', headless: true, display: undefined, wayland: undefined })).toEqual([]);
+  });
+
+  it('uses the matching configured browser with its sandbox enabled', () => {
+    expect(browserLaunchOptions({ headless: true, executablePath: '/snap/bin/chromium', configuredExecutablePath: '/snap/bin/chromium' })).toEqual({
+      headless: true,
+      executablePath: '/snap/bin/chromium',
+      chromiumSandbox: true,
+    });
+    expect(browserLaunchOptions({ headless: false, executablePath: '/bundled/chromium', configuredExecutablePath: undefined })).toEqual({ headless: false });
   });
 });

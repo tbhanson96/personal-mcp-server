@@ -39,6 +39,7 @@ export function environmentFindings({ executablePath, profileDir, headless, disp
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const profileDir = path.resolve(expandHome(options.profileDir ?? process.env.PERSONAL_MCP_CHATGPT_PROFILE_DIR ?? '~/.config/chromium'));
+  const configuredExecutablePath = options.executablePath ?? process.env.PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH;
   const pluginName = options.pluginName ?? process.env.PERSONAL_MCP_CHATGPT_PLUGIN_NAME ?? 'Personal MCP';
   const headless = process.env.PERSONAL_MCP_CHATGPT_HEADLESS === undefined
     ? options.headless
@@ -46,7 +47,7 @@ async function main() {
 
   if (options.checkEnvironment) {
     const playwright = await loadPlaywright();
-    const executablePath = await usableExecutable(playwright?.chromium?.executablePath?.());
+    const executablePath = await resolveExecutablePath(configuredExecutablePath, playwright);
     const findings = environmentFindings({ executablePath, profileDir, headless });
     const profileExists = await stat(profileDir).then((value) => value.isDirectory()).catch(() => false);
     const report = { browserInstalled: Boolean(executablePath), graphicalDisplay: Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY), headless, profileDirectory: profileDir, profileExists, ready: findings.length === 0 && profileExists, findings };
@@ -57,13 +58,13 @@ async function main() {
 
   if (options.setupProfile) {
     const playwright = await loadPlaywright();
-    const executablePath = await usableExecutable(playwright?.chromium?.executablePath?.());
+    const executablePath = await resolveExecutablePath(configuredExecutablePath, playwright);
     const findings = environmentFindings({ executablePath, profileDir, headless });
     if (findings.length > 0) return handoff(findings.join(' '));
     if (headless) return handoff('Profile setup requires a headed interactive browser so the operator can sign in manually.');
     await mkdir(profileDir, { recursive: true, mode: 0o700 });
     await chmod(profileDir, 0o700);
-    const context = await playwright.chromium.launchPersistentContext(profileDir, { headless: false });
+    const context = await playwright.chromium.launchPersistentContext(profileDir, browserLaunchOptions({ headless: false, executablePath, configuredExecutablePath }));
     const page = context.pages()[0] ?? await context.newPage();
     await page.goto(CHATGPT_PLUGINS_URL, { waitUntil: 'domcontentloaded' });
     console.error('Browser opened. Sign in and complete CAPTCHA/MFA manually if needed, confirm the Personal MCP plugin is visible, then close the browser.');
@@ -73,12 +74,12 @@ async function main() {
 
   if (options.probeProfile) {
     const playwright = await loadPlaywright();
-    const executablePath = await usableExecutable(playwright?.chromium?.executablePath?.());
+    const executablePath = await resolveExecutablePath(configuredExecutablePath, playwright);
     const findings = environmentFindings({ executablePath, profileDir, headless });
     if (findings.length > 0) return handoff(findings.join(' '));
     const profileExists = await stat(profileDir).then((value) => value.isDirectory()).catch(() => false);
     if (!profileExists) return handoff('The persistent browser profile does not exist.');
-    await probeProfile({ playwright, profileDir, pluginName, headless, artifactDir: options.artifactDir });
+    await probeProfile({ playwright, profileDir, pluginName, headless, executablePath, configuredExecutablePath, artifactDir: options.artifactDir });
     return;
   }
 
@@ -99,7 +100,7 @@ async function main() {
   }
 
   const playwright = await loadPlaywright();
-  const executablePath = await usableExecutable(playwright?.chromium?.executablePath?.());
+  const executablePath = await resolveExecutablePath(configuredExecutablePath, playwright);
   const findings = environmentFindings({ executablePath, profileDir, headless });
   if (findings.length > 0) return handoff(findings.join(' '));
   const profileExists = await stat(profileDir).then((value) => value.isDirectory()).catch(() => false);
@@ -112,7 +113,7 @@ async function main() {
   let context;
   let page;
   try {
-    context = await playwright.chromium.launchPersistentContext(profileDir, { headless });
+    context = await playwright.chromium.launchPersistentContext(profileDir, browserLaunchOptions({ headless, executablePath, configuredExecutablePath }));
     page = context.pages()[0] ?? await context.newPage();
     await page.goto(CHATGPT_PLUGINS_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await waitForChatGptUi(page);
@@ -123,11 +124,7 @@ async function main() {
       return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the headless run.');
     }
 
-    const pluginTarget = await firstVisible([
-      page.getByRole('link', { name: pluginName, exact: true }),
-      page.getByRole('button', { name: pluginName, exact: true }),
-      page.getByText(pluginName, { exact: true }),
-    ]);
+    const pluginTarget = await waitForPluginTarget(page, pluginName);
     if (!pluginTarget) throw new Error(`Could not find the ${pluginName} connection using semantic locators.`);
     await pluginTarget.click();
 
@@ -231,7 +228,25 @@ async function hasHumanVerificationChallenge(page) {
   return page.frames().some((frame) => frame.url().startsWith('https://challenges.cloudflare.com/'));
 }
 
-async function probeProfile({ playwright, profileDir, pluginName, headless, artifactDir: requestedArtifactDir }) {
+async function waitForPluginTarget(page, pluginName, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await hasHumanVerificationChallenge(page)) {
+      throw new HandoffRequiredError('ChatGPT presented a human-verification challenge. Complete it manually in a user-controlled browser; the automation will not interact with CAPTCHA.');
+    }
+    if (await requiresLogin(page)) return undefined;
+    const pluginTarget = await firstVisible([
+      page.getByRole('link', { name: pluginName, exact: true }),
+      page.getByRole('button', { name: pluginName, exact: true }),
+      page.getByText(pluginName, { exact: true }),
+    ]);
+    if (pluginTarget) return pluginTarget;
+    await page.waitForTimeout(500);
+  }
+  return undefined;
+}
+
+async function probeProfile({ playwright, profileDir, pluginName, headless, executablePath, configuredExecutablePath, artifactDir: requestedArtifactDir }) {
   const artifactDir = path.resolve(expandHome(requestedArtifactDir ?? `~/.local/state/personal-mcp-server/chatgpt-refresh/${new Date().toISOString().replaceAll(':', '-')}`));
   await mkdir(artifactDir, { recursive: true, mode: 0o700 });
   await chmod(artifactDir, 0o700);
@@ -239,7 +254,7 @@ async function probeProfile({ playwright, profileDir, pluginName, headless, arti
   let context;
   let page;
   try {
-    context = await playwright.chromium.launchPersistentContext(profileDir, { headless });
+    context = await playwright.chromium.launchPersistentContext(profileDir, browserLaunchOptions({ headless, executablePath, configuredExecutablePath }));
     page = context.pages()[0] ?? await context.newPage();
     await page.goto(CHATGPT_PLUGINS_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await waitForChatGptUi(page);
@@ -248,11 +263,7 @@ async function probeProfile({ playwright, profileDir, pluginName, headless, arti
       await failureScreenshot(page, artifactDir);
       return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the headless probe.');
     }
-    const pluginTarget = await firstVisible([
-      page.getByRole('link', { name: pluginName, exact: true }),
-      page.getByRole('button', { name: pluginName, exact: true }),
-      page.getByText(pluginName, { exact: true }),
-    ]);
+    const pluginTarget = await waitForPluginTarget(page, pluginName);
     if (!pluginTarget) throw new Error(`Could not find the ${pluginName} connection using semantic locators.`);
     await writeReport(reportPath, { outcome: 'profile_ready', pluginName, headless });
     console.log(JSON.stringify({ outcome: 'profile_ready', pluginName, headless, reportPath }, null, 2));
@@ -303,6 +314,18 @@ async function usableExecutable(candidate) {
   return stat(candidate).then((value) => value.isFile() ? candidate : undefined).catch(() => undefined);
 }
 
+async function resolveExecutablePath(configuredExecutablePath, playwright) {
+  const candidate = configuredExecutablePath
+    ? path.resolve(expandHome(configuredExecutablePath))
+    : playwright?.chromium?.executablePath?.();
+  return usableExecutable(candidate);
+}
+
+export function browserLaunchOptions({ headless, executablePath, configuredExecutablePath }) {
+  if (!configuredExecutablePath) return { headless };
+  return { headless, executablePath, chromiumSandbox: true };
+}
+
 async function readJson(filePath) {
   return JSON.parse(await readFile(path.resolve(filePath), 'utf8'));
 }
@@ -316,7 +339,7 @@ function parseArgs(argv) {
     else if (value === '--check-environment') parsed.checkEnvironment = true;
     else if (value === '--setup-profile') parsed.setupProfile = true;
     else if (value === '--probe-profile') parsed.probeProfile = true;
-    else if (['--before-manifest', '--after-manifest', '--profile-dir', '--plugin-name', '--artifact-dir'].includes(value)) {
+    else if (['--before-manifest', '--after-manifest', '--profile-dir', '--plugin-name', '--artifact-dir', '--executable-path'].includes(value)) {
       const next = argv[index + 1];
       if (!next) usageError(`${value} requires a value.`);
       parsed[value.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = next;
@@ -351,7 +374,7 @@ function handoff(message) {
 
 function usageError(message) {
   console.error(message);
-  console.error('Usage: refresh-chatgpt-plugin.mjs --before-manifest PATH --after-manifest PATH [--profile-dir PATH] [--plugin-name NAME] [--headless|--headed]');
+  console.error('Usage: refresh-chatgpt-plugin.mjs --before-manifest PATH --after-manifest PATH [--profile-dir PATH] [--plugin-name NAME] [--executable-path PATH] [--headless|--headed]');
   process.exit(2);
   throw new Error(message);
 }

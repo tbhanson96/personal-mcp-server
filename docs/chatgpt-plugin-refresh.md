@@ -40,7 +40,10 @@ configured plugin is visible. It does not click **Refresh tools**.
 Override the default profile path with `PERSONAL_MCP_CHATGPT_PROFILE_DIR` and
 the connection label with `PERSONAL_MCP_CHATGPT_PLUGIN_NAME`. Headless mode is
 the default; `PERSONAL_MCP_CHATGPT_HEADLESS=0` is an explicit headed diagnostic
-override.
+override. If the profile was created by a separately installed Chrome or
+Chromium version, set `PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH` to that browser so
+the automation does not open a newer profile with an incompatible bundled
+browser. Explicit browsers retain their Chromium sandbox.
 
 Failure reports and screenshots are written with private permissions beneath
 `~/.local/state/personal-mcp-server/chatgpt-refresh/`. They contain only schema

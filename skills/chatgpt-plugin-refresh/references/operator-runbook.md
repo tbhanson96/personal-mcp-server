@@ -26,6 +26,12 @@ The default profile is the host user's existing Chromium profile at
 `PERSONAL_MCP_CHATGPT_PLUGIN_NAME` when the connection is not named
 `Personal MCP`. These variables contain configuration only, never secrets.
 
+Keep the browser executable compatible with the browser that created the
+profile. Set `PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH` to an operator-installed
+Chromium or Chrome executable when the profile was created by that browser.
+An explicitly configured browser launches with its Chromium sandbox enabled;
+do not disable the sandbox to work around host policy.
+
 ## Guarded release invocation
 
 Use the existing deployment command with the explicit opt-in flag:
