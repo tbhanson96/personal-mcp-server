@@ -116,10 +116,11 @@ async function main() {
     await pluginTarget.click();
 
     const refreshButton = await firstVisible([
+      page.getByRole('button', { name: /^refresh tools$/i }),
       page.getByRole('button', { name: /^refresh$/i }),
-      page.getByRole('button', { name: /refresh (metadata|connection|tools)/i }),
+      page.getByRole('button', { name: /refresh (metadata|connection)/i }),
     ]);
-    if (!refreshButton) throw new Error('Could not find the connection Refresh button using semantic locators.');
+    if (!refreshButton) throw new Error('Could not find the connection Refresh tools button using semantic locators.');
     await refreshButton.click();
 
     const confirmation = page.getByRole('dialog');

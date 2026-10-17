@@ -13,9 +13,10 @@ reports the pending action without opening a browser.
 
 The automation follows the [official OpenAI refresh
 flow](https://developers.openai.com/plugins/deploy/connect-chatgpt): open the
-custom MCP connection in ChatGPT Plugins, select **Refresh**, verify changed
-advertised metadata and added tools, then use a new conversation for affected
-tests.
+custom MCP connection in ChatGPT Plugins, select **Refresh tools**, verify
+changed advertised metadata and added tools, then use a new conversation for
+affected tests. The official documentation abbreviates this action as
+“Refresh”; the current UI button is labeled **Refresh tools**.
 
 ## Browser setup
 

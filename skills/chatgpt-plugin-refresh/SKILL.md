@@ -23,9 +23,9 @@ For an eligible refresh, use
 `scripts/refresh-chatgpt-plugin.mjs --before-manifest <path> --after-manifest <path>`.
 The script uses Playwright's persistent Chromium context, semantic locators,
 and a local failure screenshot. It only visits `https://chatgpt.com/plugins`,
-opens the configured plugin connection, and selects **Refresh**. Do not replace
-this with hidden APIs, copied network requests, remote-debugging attachment, or
-undocumented endpoints.
+opens the configured plugin connection, and selects **Refresh tools**. Do not
+replace this with hidden APIs, copied network requests, remote-debugging
+attachment, or undocumented endpoints.
 
 Treat the refresh as complete only when the script verifies changed advertised
 metadata and every newly added tool name in ChatGPT. If the UI does not expose
