@@ -15,10 +15,11 @@ exports cookies or uses a remote debugging port.
 5. Run `npm run chatgpt:refresh:probe` to verify authentication and Personal
    MCP visibility without clicking **Refresh tools**.
 
-The refresh runs headlessly by default. If a host explicitly uses headed mode
-to avoid a headless-only verification challenge, run it on a local virtual
-display; connecting a VNC viewer is optional. If no authenticated profile
-exists, create it manually outside this automation. The optional
+The refresh runs headed by default. The wrapper starts a private transient Xvfb
+display when no display is already active, stops it when the command exits, and
+never starts VNC. Set `PERSONAL_MCP_CHATGPT_HEADLESS=1` only for an explicit
+diagnostic override. If no authenticated profile exists, create it manually
+outside this automation. The optional
 `npm run chatgpt:refresh:setup` command is a headed bootstrap helper only; it is
 not part of normal deployment or refresh execution.
 
@@ -38,13 +39,9 @@ The wrapper reads optional, non-secret host configuration from
 `~/.config/personal-mcp-server/chatgpt-refresh.env`. It accepts only
 `PERSONAL_MCP_CHATGPT_PROFILE_DIR`,
 `PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH`,
-`PERSONAL_MCP_CHATGPT_PLUGIN_NAME`, `PERSONAL_MCP_CHATGPT_HEADLESS`, and
-`DISPLAY`. Existing environment variables take precedence over the file.
-For persistent headed operation, install
-`assets/chatgpt-virtual-display.service` as a user service and enable it. The
-service provides only an in-memory X display; it does not install or start a
-desktop environment. A separately started, loopback-only VNC server may attach
-for diagnostics but is not part of unattended operation.
+`PERSONAL_MCP_CHATGPT_PLUGIN_NAME`, and `PERSONAL_MCP_CHATGPT_HEADLESS`.
+Existing environment variables take precedence over the file. Headed mode
+requires `xvfb-run` when no graphical display is active.
 
 ## Guarded release invocation
 
@@ -59,11 +56,9 @@ the restart, deploys and verifies the requested immutable revision, and invokes
 the browser only if the manifests differ. Without the flag it reports the
 eligible refresh command but does not open a browser.
 
-Headless operation is the portable default. A host may set
-`PERSONAL_MCP_CHATGPT_HEADLESS=0` and use Xvfb for unattended headed operation
-when headless mode alone triggers verification. No VNC client needs to be
-connected. A login, CAPTCHA, MFA, permission prompt, or confirmation dialog is
-always a handoff.
+Headed operation on transient Xvfb is the default. The wrapper owns the virtual
+display lifetime, and no VNC server or persistent display is used. A login,
+CAPTCHA, MFA, permission prompt, or confirmation dialog is always a handoff.
 
 ## Outcomes
 

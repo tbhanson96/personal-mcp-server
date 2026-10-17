@@ -121,18 +121,15 @@ async function main() {
     if (await requiresLogin(page)) {
       await writeReport(reportPath, { outcome: 'handoff_required', reason: 'login_required', ...evidence });
       await failureScreenshot(page, artifactDir);
-      return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the headless run.');
+      return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the refresh.');
     }
 
+    await selectPersonalTab(page);
     const pluginTarget = await waitForPluginTarget(page, pluginName);
     if (!pluginTarget) throw new Error(`Could not find the ${pluginName} connection using semantic locators.`);
     await pluginTarget.click();
 
-    const refreshButton = await firstVisible([
-      page.getByRole('button', { name: /^refresh tools$/i }),
-      page.getByRole('button', { name: /^refresh$/i }),
-      page.getByRole('button', { name: /refresh (metadata|connection)/i }),
-    ]);
+    const refreshButton = await waitForRefreshButton(page);
     if (!refreshButton) throw new Error('Could not find the connection Refresh tools button using semantic locators.');
     await refreshButton.click();
 
@@ -228,6 +225,27 @@ async function hasHumanVerificationChallenge(page) {
   return page.frames().some((frame) => frame.url().startsWith('https://challenges.cloudflare.com/'));
 }
 
+async function selectPersonalTab(page, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await hasHumanVerificationChallenge(page)) {
+      throw new HandoffRequiredError('ChatGPT presented a human-verification challenge. Complete it manually in a user-controlled browser; the automation will not interact with CAPTCHA.');
+    }
+    if (await requiresLogin(page)) return;
+    const personalTab = await firstVisible([
+      page.getByRole('tab', { name: /^personal$/i }),
+      page.getByRole('button', { name: /^personal$/i }),
+      page.getByText('Personal', { exact: true }),
+    ]);
+    if (personalTab) {
+      await personalTab.click();
+      return;
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error('Could not find the Personal plugins tab using semantic locators.');
+}
+
 async function waitForPluginTarget(page, pluginName, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -238,9 +256,42 @@ async function waitForPluginTarget(page, pluginName, timeoutMs = 30_000) {
     const pluginTarget = await firstVisible([
       page.getByRole('link', { name: pluginName, exact: true }),
       page.getByRole('button', { name: pluginName, exact: true }),
-      page.getByText(pluginName, { exact: true }),
+      page.getByText(pluginName, { exact: true }).locator('xpath=ancestor::button[1]'),
+      page.getByText(pluginName, { exact: true }).locator('xpath=ancestor::*[@role="button"][1]'),
+      page.getByText(pluginName, { exact: true }).locator('xpath=ancestor::a[1]'),
     ]);
     if (pluginTarget) return pluginTarget;
+    await page.waitForTimeout(500);
+  }
+  return undefined;
+}
+
+async function waitForRefreshButton(page, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let manageOpened = false;
+  while (Date.now() < deadline) {
+    if (await hasHumanVerificationChallenge(page)) {
+      throw new HandoffRequiredError('ChatGPT presented a human-verification challenge. Complete it manually in a user-controlled browser; the automation will not interact with CAPTCHA.');
+    }
+    if (!manageOpened) {
+      const manageButton = await firstVisible([
+        page.getByRole('button', { name: /manage/i }),
+        page.getByRole('link', { name: /manage/i }),
+        page.getByText('Manage', { exact: true }).locator('xpath=ancestor::button[1]'),
+        page.getByText('Manage', { exact: true }).locator('xpath=ancestor::a[1]'),
+      ]);
+      if (manageButton) {
+        await manageButton.click();
+        manageOpened = true;
+      }
+    } else {
+      const refreshButton = await firstVisible([
+        page.getByRole('button', { name: /^refresh tools$/i }),
+        page.getByRole('button', { name: /^refresh$/i }),
+        page.getByRole('button', { name: /refresh (metadata|connection)/i }),
+      ]);
+      if (refreshButton) return refreshButton;
+    }
     await page.waitForTimeout(500);
   }
   return undefined;
@@ -261,8 +312,9 @@ async function probeProfile({ playwright, profileDir, pluginName, headless, exec
     if (await requiresLogin(page)) {
       await writeReport(reportPath, { outcome: 'handoff_required', reason: 'login_required', pluginName, headless });
       await failureScreenshot(page, artifactDir);
-      return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the headless probe.');
+      return handoff('The persistent browser profile is not authenticated with ChatGPT. Sign in manually outside this automation, then retry the probe.');
     }
+    await selectPersonalTab(page);
     const pluginTarget = await waitForPluginTarget(page, pluginName);
     if (!pluginTarget) throw new Error(`Could not find the ${pluginName} connection using semantic locators.`);
     await writeReport(reportPath, { outcome: 'profile_ready', pluginName, headless });
@@ -274,7 +326,7 @@ async function probeProfile({ playwright, profileDir, pluginName, headless, exec
       return handoff(error.message);
     }
     await writeReport(reportPath, { outcome: 'verification_failed', error: safeError(error), pluginName, headless });
-    console.error(`Headless ChatGPT profile probe failed: ${safeError(error)}`);
+    console.error(`ChatGPT profile probe failed: ${safeError(error)}`);
     console.error(`Private evidence: ${reportPath}`);
     process.exitCode = 1;
   } finally {

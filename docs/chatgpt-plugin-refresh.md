@@ -27,29 +27,31 @@ npm run chatgpt:refresh:check
 npm run chatgpt:refresh:probe
 ```
 
-The refresh runs headlessly and needs no graphical display. Point
+The refresh runs headed inside a transient virtual display and needs no
+persistent graphical session. Point
 `PERSONAL_MCP_CHATGPT_PROFILE_DIR` at a user-controlled Chromium profile that
 is already authenticated with ChatGPT; the host default is
 `~/.config/chromium`. If no such profile exists, create and authenticate it
 manually outside this automation. The automation never reads, exports, or
 prints browser storage, and it never attempts login or approval flows.
 
-The probe is read-only: it opens ChatGPT Plugins headlessly and verifies the
-configured plugin is visible. It does not click **Refresh tools**.
+The probe is read-only: it opens ChatGPT Plugins using the configured browser
+mode and verifies the configured plugin is visible. It does not click
+**Refresh tools**.
 
 Override the default profile path with `PERSONAL_MCP_CHATGPT_PROFILE_DIR` and
-the connection label with `PERSONAL_MCP_CHATGPT_PLUGIN_NAME`. Headless mode is
-the default; `PERSONAL_MCP_CHATGPT_HEADLESS=0` is an explicit headed diagnostic
+the connection label with `PERSONAL_MCP_CHATGPT_PLUGIN_NAME`. Headed mode is
+the default; `PERSONAL_MCP_CHATGPT_HEADLESS=1` is an explicit diagnostic
 override. If the profile was created by a separately installed Chrome or
 Chromium version, set `PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH` to that browser so
 the automation does not open a newer profile with an incompatible bundled
 browser. Explicit browsers retain their Chromium sandbox.
 
 The command wrapper loads optional non-secret host settings from
-`~/.config/personal-mcp-server/chatgpt-refresh.env`. On a host where headless
-mode alone triggers human verification, configure headed mode on a local Xvfb
-display. The browser can render there unattended; a VNC connection is useful
-for setup and diagnostics but is not required for later refreshes.
+`~/.config/personal-mcp-server/chatgpt-refresh.env`. When no display exists,
+the wrapper starts `xvfb-run` for that command and tears it down afterward.
+Normal refreshes do not start VNC or leave a persistent graphical service
+running.
 
 Failure reports and screenshots are written with private permissions beneath
 `~/.local/state/personal-mcp-server/chatgpt-refresh/`. They contain only schema
