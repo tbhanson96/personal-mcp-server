@@ -104,37 +104,6 @@
     {
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": true
-      },
-      "description": "Temporary read-only tool for verifying that ChatGPT discovered the latest Personal MCP tool definitions. Call it with an optional short message and confirm the response echoes that message.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "message": {
-            "description": "Optional text to echo in the refresh verification response.",
-            "maxLength": 1000,
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "name": "personal_mcp_refresh_test",
-      "securitySchemes": [
-        {
-          "scopes": [
-            "mcp:read"
-          ],
-          "type": "oauth2"
-        }
-      ],
-      "title": "Test Personal MCP Tool Refresh"
-    },
-    {
-      "annotations": {
-        "destructiveHint": false,
         "readOnlyHint": true
       },
       "description": "Read Home Assistant instance configuration.",
