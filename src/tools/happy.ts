@@ -5,20 +5,17 @@ import { EmptyArgsSchema, parseArgs, zodToJsonSchemaObject } from '../schemas/co
 import { disabledResult, jsonResult, ToolDefinition } from './types.js';
 
 const SessionIdSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
-const PermissionModeSchema = z.enum(['auto', 'read-only', 'safe-yolo', 'yolo']);
 const EffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
 const StartArgsSchema = z.object({
   directory: z.string().min(1).max(4096),
   model: z.string().min(1).max(128).optional(),
   effort: EffortSchema.optional(),
-  permission_mode: PermissionModeSchema.default('auto'),
 });
 
 const PromptArgsSchema = z.object({
   session_id: SessionIdSchema,
   prompt: z.string().min(1).max(100_000),
-  permission_mode: PermissionModeSchema.optional(),
   model: z.string().min(1).max(128).optional(),
   effort: EffortSchema.optional(),
 });
@@ -88,12 +85,11 @@ export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
       tool: {
         name: 'happy_start_codex_session',
         title: 'Start Happy Codex Session',
-        description: 'Start a daemon-owned Happy Codex session in an existing absolute host directory under a root reported by happy_daemon_status.allowed_roots. Do not reuse /Repo-style paths from homeserver file tools; those may be in a different filesystem namespace. The session appears in the Happy app. Defaults to auto permissions.',
+        description: 'Start a daemon-owned Happy Codex session with yolo permissions in an existing absolute host directory under a root reported by happy_daemon_status.allowed_roots. Yolo mode grants full host access without approval prompts. Do not reuse /Repo-style paths from homeserver file tools; those may be in a different filesystem namespace. The session appears in the Happy app.',
         inputSchema: zodToJsonSchemaObject({
           directory: { type: 'string', minLength: 1, description: 'Existing absolute host path under happy_daemon_status.allowed_roots, for example /home/tim/Repo/project. This is not a homeserver API path such as /Repo/project.' },
           model: { type: 'string', minLength: 1 },
           effort: { type: 'string', enum: EffortSchema.options },
-          permission_mode: { type: 'string', enum: PermissionModeSchema.options, default: 'auto' },
         }, ['directory']),
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
       },
@@ -102,7 +98,7 @@ export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
         category: 'happy',
         tags: ['happy', 'codex', 'session', 'start'],
         relatedTools: ['happy_send_prompt', 'happy_start_and_prompt'],
-        workflowNotes: ['Prefer happy_start_and_prompt when an initial task is already known. Call happy_daemon_status when the absolute host path is uncertain. Paths returned by homeserver file tools may not be valid host paths. Use auto permissions unless the user explicitly requests another mode.'],
+        workflowNotes: ['Prefer happy_start_and_prompt when an initial task is already known. Call happy_daemon_status when the absolute host path is uncertain. Paths returned by homeserver file tools may not be valid host paths. Every session runs in yolo mode with full host access and no approval prompts.'],
         changesState: true,
       },
     },
@@ -114,7 +110,6 @@ export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
         inputSchema: zodToJsonSchemaObject({
           session_id: { type: 'string', minLength: 1 },
           prompt: { type: 'string', minLength: 1, maxLength: 100_000 },
-          permission_mode: { type: 'string', enum: PermissionModeSchema.options },
           model: { type: 'string', minLength: 1 },
           effort: { type: 'string', enum: EffortSchema.options },
         }, ['session_id', 'prompt']),
@@ -157,13 +152,12 @@ export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
       tool: {
         name: 'happy_start_and_prompt',
         title: 'Start and Prompt Happy Codex Session',
-        description: 'Start a daemon-owned Happy Codex session in an existing absolute host directory under happy_daemon_status.allowed_roots and immediately deliver its first encrypted prompt. Do not reuse /Repo-style homeserver paths. The complete conversation appears in the Happy app.',
+        description: 'Start a daemon-owned Happy Codex session with yolo permissions in an existing absolute host directory under happy_daemon_status.allowed_roots and immediately deliver its first encrypted prompt. Yolo mode grants full host access without approval prompts. Do not reuse /Repo-style homeserver paths. The complete conversation appears in the Happy app.',
         inputSchema: zodToJsonSchemaObject({
           directory: { type: 'string', minLength: 1, description: 'Existing absolute host path under happy_daemon_status.allowed_roots, for example /home/tim/Repo/project. This is not a homeserver API path such as /Repo/project.' },
           prompt: { type: 'string', minLength: 1, maxLength: 100_000 },
           model: { type: 'string', minLength: 1 },
           effort: { type: 'string', enum: EffortSchema.options },
-          permission_mode: { type: 'string', enum: PermissionModeSchema.options, default: 'auto' },
         }, ['directory', 'prompt']),
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
       },
@@ -172,7 +166,7 @@ export function happyTools(config?: HappyBridgeConfig): ToolDefinition[] {
         category: 'happy',
         tags: ['happy', 'codex', 'session', 'start', 'prompt'],
         relatedTools: ['happy_list_sessions', 'happy_stop_session'],
-        workflowNotes: ['Call happy_daemon_status when the absolute host path is uncertain; homeserver file paths may use a different namespace. Use auto permissions unless the user explicitly requests another mode. The tool returns after Happy accepts the prompt; use happy_get_session_messages to follow progress.'],
+        workflowNotes: ['Call happy_daemon_status when the absolute host path is uncertain; homeserver file paths may use a different namespace. Every session and prompt runs in yolo mode with full host access and no approval prompts. The tool returns after Happy accepts the prompt; use happy_get_session_messages to follow progress.'],
         changesState: true,
       },
     },

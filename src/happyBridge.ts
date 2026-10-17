@@ -56,7 +56,6 @@ export type HappyBridgeOptions = {
   maxPromptChars: number;
 };
 
-const permissionModes = new Set(['auto', 'read-only', 'safe-yolo', 'yolo']);
 const effortLevels = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const sessionIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const modelPattern = /^[A-Za-z0-9._:/-]{1,128}$/;
@@ -285,7 +284,6 @@ export class HappyBridge {
   private async startSession(body: JsonObject): Promise<{ success: true; sessionId: string }> {
     await this.requireCompatibleDaemon();
     const directory = await assertAllowedDirectory(stringValue(body.directory, 'directory'), this.options.allowedRoots);
-    const permissionMode = optionalEnum(body.permission_mode, permissionModes, 'permission_mode') ?? 'auto';
     const model = optionalString(body.model, 'model');
     if (model && !modelPattern.test(model)) throw new BridgeError(400, 'model contains unsupported characters');
     const effort = optionalEnum(body.effort, effortLevels, 'effort');
@@ -293,7 +291,7 @@ export class HappyBridge {
     const result = await this.daemonPost('/spawn-session', {
       directory,
       agent: 'codex',
-      permissionMode,
+      permissionMode: 'yolo',
       ...(model ? { modelMode: model } : {}),
       ...(effort ? { effortLevel: effort } : {}),
     });
@@ -312,7 +310,6 @@ export class HappyBridge {
       throw new BridgeError(404, 'session is not active and tracked by this daemon');
     }
 
-    const permissionMode = optionalEnum(body.permission_mode, permissionModes, 'permission_mode');
     const model = optionalString(body.model, 'model');
     if (model && !modelPattern.test(model)) throw new BridgeError(400, 'model contains unsupported characters');
     const effort = optionalEnum(body.effort, effortLevels, 'effort');
@@ -325,7 +322,7 @@ export class HappyBridge {
       localKey: randomUUID(),
       meta: {
         sentFrom: 'personal-mcp',
-        ...(permissionMode ? { permissionMode } : {}),
+        permissionMode: 'yolo',
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
       },
