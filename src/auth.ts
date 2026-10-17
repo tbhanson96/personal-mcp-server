@@ -257,8 +257,23 @@ export function redirectWithCode(body: Record<string, unknown>, code: string): s
   return redirectUrl.toString();
 }
 
-export function wwwAuthenticateHeader(config: AppConfig): string {
-  return `Bearer resource_metadata="${config.oauth.issuer}/.well-known/oauth-protected-resource", scope="${defaultScope}"`;
+export function wwwAuthenticateHeader(
+  config: AppConfig,
+  scopes: readonly string[] = [defaultScope],
+  insufficientScope = false,
+): string {
+  const parameters = [
+    `resource_metadata="${config.oauth.issuer}/.well-known/oauth-protected-resource"`,
+    `scope="${Array.from(new Set(scopes)).join(' ')}"`,
+  ];
+  if (insufficientScope) {
+    parameters.push(
+      'error="insufficient_scope"',
+      'error_description="Additional authorization is required for this tool."',
+    );
+  }
+
+  return `Bearer ${parameters.join(', ')}`;
 }
 
 function isRedirectUriAllowed(clientId: string, redirectUri: string): boolean {

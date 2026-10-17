@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { createToolDefinitions, securityScopesForTool } from '../src/server.js';
+import { createMcpServer, createToolDefinitions, securityScopesForTool } from '../src/server.js';
 import { AppConfig } from '../src/config.js';
 
 const baseConfig: AppConfig = {
@@ -91,6 +93,39 @@ describe('createToolDefinitions', () => {
     expect(getPlayers && securityScopesForTool(getPlayers)).toEqual(['mcp:read']);
     expect(playSpotify && securityScopesForTool(playSpotify)).toEqual(['mcp:control']);
     expect(controlPlayer && securityScopesForTool(controlPlayer)).toEqual(['mcp:control']);
+  });
+
+  it('returns an OAuth scope-upgrade challenge for a control tool called with read-only access', async () => {
+    const config: AppConfig = {
+      ...baseConfig,
+      publicUrl: 'https://mcp.example.com/mcp',
+      oauth: {
+        issuer: 'https://mcp.example.com',
+        loginCode: 'login-code',
+        tokenSigningSecret: 'signing-secret',
+        accessTokenTtlSeconds: 3600,
+      },
+    };
+    const server = createMcpServer(config, ['mcp:read']);
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = await client.callTool({
+        name: 'home_assistant_play_spotify',
+        arguments: { spotify_uri: 'spotify:track:028i7HBfp8uE5epmx5ieMA' },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result._meta?.['mcp/www_authenticate']).toEqual([
+        'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource", scope="mcp:read mcp:control", error="insufficient_scope", error_description="Additional authorization is required for this tool."',
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 
   it('distinguishes Happy host paths from homeserver API paths', () => {

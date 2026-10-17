@@ -6,7 +6,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { AppConfig } from './config.js';
-import { MCP_CONTROL_SCOPE, MCP_READ_SCOPE } from './auth.js';
+import { MCP_CONTROL_SCOPE, MCP_READ_SCOPE, wwwAuthenticateHeader } from './auth.js';
 import { logError, logInfo, sanitizeForLog } from './logging.js';
 import { discoveryTools } from './tools/discovery.js';
 import { homeAssistantTools } from './tools/homeAssistant.js';
@@ -93,7 +93,17 @@ export function createMcpServer(
     const requiredScopes = securityScopesForTool(definition);
     const missingScopes = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
     if (missingScopes.length > 0) {
-      throw new McpError(ErrorCode.InvalidRequest, `Insufficient OAuth scope. Required: ${missingScopes.join(' ')}`);
+      const requestedScopes = Array.from(new Set([...grantedScopes, ...requiredScopes]));
+      return {
+        content: [{
+          type: 'text',
+          text: `Additional authorization is required. Required scope: ${missingScopes.join(' ')}`,
+        }],
+        _meta: {
+          'mcp/www_authenticate': [wwwAuthenticateHeader(config, requestedScopes, true)],
+        },
+        isError: true,
+      };
     }
 
     logInfo('mcp.tool.call.started', {

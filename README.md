@@ -37,8 +37,10 @@ x-api-key: <PERSONAL_MCP_API_KEY>
 
 OAuth advertises `mcp:read` and `mcp:control` separately. Playback mutations
 require `mcp:control`; read-only player discovery requires `mcp:read`. The
-server API key grants both scopes. Home Assistant credentials remain in the
-server environment and are never accepted as tool arguments.
+server returns an OAuth scope-upgrade challenge when a read-only connection
+calls a control tool. The server API key grants both scopes. Home Assistant
+credentials remain in the server environment and are never accepted as tool
+arguments.
 
 ## Deployment
 

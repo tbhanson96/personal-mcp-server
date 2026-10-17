@@ -37,8 +37,9 @@ Example arguments after the lookup steps:
 
 - The MCP HTTP endpoint still requires its API key or OAuth bearer token.
 - Read-only media-player discovery requires the `mcp:read` OAuth scope.
-- Playback and control tools require `mcp:control`. Existing OAuth clients may
-  need to reconnect and authorize that scope after this feature is deployed.
+- Playback and control tools require `mcp:control`. A read-only call returns an
+  OAuth scope-upgrade challenge so compatible clients can open reauthorization;
+  otherwise reconnect manually and authorize the new scope.
 - `HOME_ASSISTANT_TOKEN` stays in the Personal MCP server environment. It is
   sent only to the configured `HOME_ASSISTANT_URL` as a bearer token.
 - Tool schemas accept no Home Assistant or Spotify credentials.
