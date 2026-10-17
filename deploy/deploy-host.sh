@@ -128,7 +128,7 @@ elif [[ $refresh_chatgpt == false ]]; then
   echo "ChatGPT plugin refresh is eligible because advertised tool metadata changed" >&2
   echo "Re-run this exact verified deployment with --refresh-chatgpt, or invoke the chatgpt-plugin-refresh skill with the persisted pending manifests" >&2
 else
-  if node "$repo_dir/skills/chatgpt-plugin-refresh/scripts/refresh-chatgpt-plugin.mjs" \
+  if "$repo_dir/skills/chatgpt-plugin-refresh/scripts/run-refresh.sh" \
     --before-manifest "$manifest_before" \
     --after-manifest "$manifest_after"; then
     unlink "$pending_before" 2>/dev/null || true

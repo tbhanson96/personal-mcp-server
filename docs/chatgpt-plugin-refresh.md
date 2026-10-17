@@ -45,6 +45,12 @@ Chromium version, set `PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH` to that browser so
 the automation does not open a newer profile with an incompatible bundled
 browser. Explicit browsers retain their Chromium sandbox.
 
+The command wrapper loads optional non-secret host settings from
+`~/.config/personal-mcp-server/chatgpt-refresh.env`. On a host where headless
+mode alone triggers human verification, configure headed mode on a local Xvfb
+display. The browser can render there unattended; a VNC connection is useful
+for setup and diagnostics but is not required for later refreshes.
+
 Failure reports and screenshots are written with private permissions beneath
 `~/.local/state/personal-mcp-server/chatgpt-refresh/`. They contain only schema
 hashes, affected tool names, outcome, and a local screenshot; they are not

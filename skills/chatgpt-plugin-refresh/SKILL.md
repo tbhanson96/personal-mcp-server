@@ -21,8 +21,11 @@ operator the exact next UI action.
 
 For an eligible refresh, use
 `scripts/refresh-chatgpt-plugin.mjs --before-manifest <path> --after-manifest <path>`.
-The script uses a headless Playwright persistent Chromium context by default,
-semantic locators, and a local failure screenshot. It only visits
+The script uses a Playwright persistent Chromium context, semantic locators,
+and a local failure screenshot. Headless is the portable default, but a host
+where headless mode triggers verification may explicitly use a headed browser
+on a local virtual display. A VNC viewer is optional and is never required for
+unattended runs. It only visits
 `https://chatgpt.com/plugins`, opens the configured plugin connection, and
 selects **Refresh tools**. Do not replace this with hidden APIs, copied network
 requests, remote-debugging attachment, or undocumented endpoints.

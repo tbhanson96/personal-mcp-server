@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 // @ts-expect-error The executable JavaScript skill intentionally has no package declaration.
 import { browserLaunchOptions, compareManifests, environmentFindings } from '../skills/chatgpt-plugin-refresh/scripts/refresh-chatgpt-plugin.mjs';
 
@@ -35,5 +39,50 @@ describe('ChatGPT plugin refresh guard', () => {
       chromiumSandbox: true,
     });
     expect(browserLaunchOptions({ headless: false, executablePath: '/bundled/chromium', configuredExecutablePath: undefined })).toEqual({ headless: false });
+  });
+
+  it('loads allowlisted host configuration through the command wrapper', () => {
+    const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), 'chatgpt-refresh-config-'));
+    try {
+      const configPath = path.join(temporaryDirectory, 'refresh.env');
+      writeFileSync(configPath, [
+        `PERSONAL_MCP_CHATGPT_PROFILE_DIR=${temporaryDirectory}`,
+        `PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH=${process.execPath}`,
+        'PERSONAL_MCP_CHATGPT_HEADLESS=0',
+        'DISPLAY=:77',
+      ].join('\n'));
+      chmodSync(configPath, 0o600);
+      const environment = { ...process.env, PERSONAL_MCP_CHATGPT_CONFIG_FILE: configPath };
+      delete environment.PERSONAL_MCP_CHATGPT_HEADLESS;
+      delete environment.PERSONAL_MCP_CHATGPT_PROFILE_DIR;
+      delete environment.PERSONAL_MCP_CHATGPT_EXECUTABLE_PATH;
+      delete environment.DISPLAY;
+      const result = spawnSync('bash', ['skills/chatgpt-plugin-refresh/scripts/run-refresh.sh', '--check-environment'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: environment,
+      });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ headless: false, graphicalDisplay: true, profileExists: true, ready: true });
+    } finally {
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unknown host configuration keys', () => {
+    const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), 'chatgpt-refresh-config-'));
+    try {
+      const configPath = path.join(temporaryDirectory, 'refresh.env');
+      writeFileSync(configPath, 'UNSAFE_UNKNOWN_KEY=value\n');
+      const result = spawnSync('bash', ['skills/chatgpt-plugin-refresh/scripts/run-refresh.sh', '--check-environment'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, PERSONAL_MCP_CHATGPT_CONFIG_FILE: configPath },
+      });
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('unsupported ChatGPT refresh config key');
+    } finally {
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });
