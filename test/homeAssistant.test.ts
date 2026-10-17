@@ -170,6 +170,114 @@ describe('Home Assistant tools', () => {
     ]);
   });
 
+  it('searches SpotifyPlus and returns only sanitized track candidates', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, [
+      spotifyState({ source: 'Tim’s Mac mini' }),
+      {
+        entity_id: 'media_player.living_room_speaker',
+        state: 'unavailable',
+        attributes: { friendly_name: 'Living Room Speaker' },
+      },
+      {
+        entity_id: 'switch.living_room_speakers',
+        state: 'on',
+        attributes: { friendly_name: 'Living Room Speakers' },
+      },
+    ], undefined, spotifySearchResponse());
+    const tool = toolNamed(baseUrl, 'home_assistant_search_spotify_tracks');
+
+    const result = await tool.execute({
+      title: 'Moves Like Jagger',
+      artist: 'Maroon 5',
+      limit: 5,
+    });
+
+    expect(resultJson(result)).toEqual([
+      {
+        name: 'Moves Like Jagger - Studio Recording From "The Voice" Performance',
+        artists: ['Maroon 5', 'Christina Aguilera'],
+        album: 'Hands All Over',
+        spotify_uri: 'spotify:track:7LcfRTgAVTs5pQGEQgUEzN',
+        duration_ms: 201160,
+        explicit: false,
+        is_playable: true,
+      },
+    ]);
+    expect(JSON.stringify(resultJson(result))).not.toContain('private-user@example.com');
+    expect(requests).toEqual([
+      expect.objectContaining({ method: 'GET', url: '/api/states' }),
+      expect.objectContaining({
+        method: 'POST',
+        url: '/api/services/spotifyplus/search_tracks?return_response',
+        body: {
+          entity_id: 'media_player.spotify_living_room',
+          criteria: 'Moves Like Jagger Maroon 5',
+          limit_total: 5,
+        },
+      }),
+    ]);
+  });
+
+  it('resolves and plays a confidently matched named track end to end', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, [
+      spotifyState({ source: 'Tim’s Mac mini' }),
+      {
+        entity_id: 'media_player.living_room_speaker',
+        state: 'unavailable',
+        attributes: { friendly_name: 'Living Room Speaker' },
+      },
+      {
+        entity_id: 'switch.living_room_speakers',
+        state: 'on',
+        attributes: { friendly_name: 'Living Room Speakers' },
+      },
+    ], undefined, spotifySearchResponse());
+    const tool = toolNamed(baseUrl, 'home_assistant_play_spotify_track');
+
+    const result = await tool.execute({ title: 'Moves Like Jagger', artist: 'Maroon 5' });
+
+    expect(resultJson(result)).toMatchObject({
+      success: true,
+      entity_id: 'media_player.spotify_living_room',
+      spotify_uri: 'spotify:track:7LcfRTgAVTs5pQGEQgUEzN',
+      source: 'Tim’s Mac mini',
+      requested_title: 'Moves Like Jagger',
+      requested_artist: 'Maroon 5',
+      matched_track: {
+        name: 'Moves Like Jagger - Studio Recording From "The Voice" Performance',
+        artists: ['Maroon 5', 'Christina Aguilera'],
+      },
+    });
+    expect(requests.filter(({ method }) => method === 'POST')).toEqual([
+      expect.objectContaining({ url: '/api/services/spotifyplus/search_tracks?return_response' }),
+      expect.objectContaining({
+        url: '/api/services/media_player/play_media',
+        body: {
+          entity_id: 'media_player.spotify_living_room',
+          media_content_id: 'spotify:track:7LcfRTgAVTs5pQGEQgUEzN',
+          media_content_type: 'track',
+        },
+      }),
+    ]);
+  });
+
+  it('does not play a named track when title and artist do not confidently match', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(
+      servers,
+      [spotifyState({ source: 'Tim’s Mac mini' })],
+      undefined,
+      spotifySearchResponse(),
+    );
+    const tool = toolNamed(baseUrl, 'home_assistant_play_spotify_track');
+
+    await expect(tool.execute({
+      title: 'Moves Like Jagger',
+      artist: 'The Rolling Stones',
+    })).rejects.toThrow('No playable Spotify track confidently matched');
+
+    expect(requests.some(({ url }) => url === '/api/services/media_player/play_media')).toBe(false);
+  });
+
   it('selects the Mac mini automatically when no source is currently connected', async () => {
     const { baseUrl, requests } = await startHomeAssistantStub(servers, [spotifyState({
       source_list: ['Tim’s Mac mini', 'Other'],
@@ -242,7 +350,7 @@ describe('Home Assistant tools', () => {
 
   it('requires control scope and never accepts credentials in tool arguments', () => {
     const tools = homeAssistantTools({ baseUrl: 'http://ha.invalid', token: 'server-side-only' });
-    for (const name of ['home_assistant_set_temperature', 'home_assistant_play_spotify', 'home_assistant_control_media_player']) {
+    for (const name of ['home_assistant_set_temperature', 'home_assistant_play_spotify_track', 'home_assistant_play_spotify', 'home_assistant_control_media_player']) {
       const tool = tools.find((candidate) => candidate.tool.name === name);
       expect(tool?.securityScopes).toEqual([MCP_CONTROL_SCOPE]);
       expect(tool?.tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
@@ -253,6 +361,10 @@ describe('Home Assistant tools', () => {
         expect(tool?.tool.inputSchema.properties).not.toHaveProperty('source');
       }
     }
+    const searchTool = tools.find((candidate) => candidate.tool.name === 'home_assistant_search_spotify_tracks');
+    expect(searchTool?.securityScopes).toBeUndefined();
+    expect(searchTool?.tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(searchTool?.tool.inputSchema.properties).not.toHaveProperty('token');
   });
 });
 
@@ -277,6 +389,7 @@ async function startHomeAssistantStub(
   servers: ReturnType<typeof createServer>[],
   states: unknown[],
   postErrorStatus?: number,
+  spotifySearchResult?: unknown,
 ): Promise<{ baseUrl: string; requests: CapturedRequest[] }> {
   const requests: CapturedRequest[] = [];
   const server = createServer((request, response) => {
@@ -297,6 +410,10 @@ async function startHomeAssistantStub(
         return;
       }
       response.writeHead(200, { 'Content-Type': 'application/json' });
+      if (request.method === 'POST' && request.url === '/api/services/spotifyplus/search_tracks?return_response') {
+        response.end(JSON.stringify(spotifySearchResult ?? { service_response: { result: { items: [] } } }));
+        return;
+      }
       if (request.method === 'GET' && request.url?.startsWith('/api/states/')) {
         const entityId = decodeURIComponent(request.url.slice('/api/states/'.length));
         response.end(JSON.stringify(states.find((state) => (
@@ -318,6 +435,29 @@ async function startHomeAssistantStub(
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
   return { baseUrl: `http://127.0.0.1:${address.port}`, requests };
+}
+
+function spotifySearchResponse() {
+  return {
+    service_response: {
+      user_profile: { email: 'private-user@example.com', access_token: 'must-not-leak' },
+      result: {
+        items: [
+          {
+            name: 'Moves Like Jagger - Studio Recording From "The Voice" Performance',
+            artists: [{ name: 'Maroon 5' }, { name: 'Christina Aguilera' }],
+            album: { name: 'Hands All Over', images: [{ url: 'private-image' }] },
+            uri: 'spotify:track:7LcfRTgAVTs5pQGEQgUEzN',
+            duration_ms: 201160,
+            explicit: false,
+            is_playable: true,
+            href: 'private-api-url',
+          },
+          { name: 'Malformed result', uri: 'https://example.com/not-spotify', artists: [] },
+        ],
+      },
+    },
+  };
 }
 
 function spotifyState(attributes: Record<string, unknown> = {}) {

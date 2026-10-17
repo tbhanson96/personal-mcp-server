@@ -291,11 +291,97 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Search the Spotify catalog by track title and optional artist through the configured SpotifyPlus integration. Returns sanitized candidates with exact Spotify track URIs for disambiguation.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "artist": {
+            "description": "Optional requested artist used to narrow and verify results.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Maximum sanitized candidates to return; defaults to 5.",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": {
+            "description": "Requested track title, without inventing a Spotify URI.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "name": "home_assistant_search_spotify_tracks",
+      "securitySchemes": [
+        {
+          "scopes": [
+            "mcp:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": "Search Spotify Tracks Through Home Assistant"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Play an exact Spotify URI on the single Home Assistant Spotify player, using its current connected device (normally the Mac mini). Resolve a named song to a Spotify URI with Spotify search first.",
+      "description": "Search and play a named Spotify track on the single Home Assistant Spotify player and its current connected device. Uses SpotifyPlus and plays only a confident title/artist match.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "artist": {
+            "description": "Optional artist used to narrow and verify the match.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "description": "Requested track title.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "name": "home_assistant_play_spotify_track",
+      "securitySchemes": [
+        {
+          "scopes": [
+            "mcp:control"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": "Play Named Spotify Track Through Home Assistant"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Play an exact Spotify URI on the single Home Assistant Spotify player and its current connected device. For natural-language track requests, use home_assistant_play_spotify_track.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {

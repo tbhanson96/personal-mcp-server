@@ -36,6 +36,17 @@ const PlaySpotifyArgsSchema = z.object({
   ),
 });
 
+const SearchSpotifyTracksArgsSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  artist: z.string().trim().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(10).optional(),
+});
+
+const PlaySpotifyTrackArgsSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  artist: z.string().trim().min(1).max(200).optional(),
+});
+
 const MediaPlayerControlArgsSchema = z.object({
   action: z.enum(['pause', 'resume', 'next', 'previous', 'seek', 'set_volume']),
   seek_position_seconds: z.number().finite().min(0).optional(),
@@ -198,9 +209,72 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
     },
     {
       tool: {
+        name: 'home_assistant_search_spotify_tracks',
+        title: 'Search Spotify Tracks Through Home Assistant',
+        description: 'Search the Spotify catalog by track title and optional artist through the configured SpotifyPlus integration. Returns sanitized candidates with exact Spotify track URIs for disambiguation.',
+        inputSchema: zodToJsonSchemaObject({
+          title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'Requested track title, without inventing a Spotify URI.',
+          },
+          artist: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'Optional requested artist used to narrow and verify results.',
+          },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 10,
+            description: 'Maximum sanitized candidates to return; defaults to 5.',
+          },
+        }, ['title']),
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      },
+      execute: async (args) => {
+        const parsed = parseArgs(SearchSpotifyTracksArgsSchema, args);
+        return client
+          ? jsonResult(await client.searchSpotifyTracks(parsed.title, parsed.artist, parsed.limit))
+          : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
+        name: 'home_assistant_play_spotify_track',
+        title: 'Play Named Spotify Track Through Home Assistant',
+        description: 'Search and play a named Spotify track on the single Home Assistant Spotify player and its current connected device. Uses SpotifyPlus and plays only a confident title/artist match.',
+        inputSchema: zodToJsonSchemaObject({
+          title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'Requested track title.',
+          },
+          artist: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'Optional artist used to narrow and verify the match.',
+          },
+        }, ['title']),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      },
+      securityScopes: [MCP_CONTROL_SCOPE],
+      execute: async (args) => {
+        const parsed = parseArgs(PlaySpotifyTrackArgsSchema, args);
+        return client
+          ? jsonResult(await client.playSpotifyTrack(parsed.title, parsed.artist))
+          : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
         name: 'home_assistant_play_spotify',
         title: 'Play Spotify Through Home Assistant',
-        description: 'Play an exact Spotify URI on the single Home Assistant Spotify player, using its current connected device (normally the Mac mini). Resolve a named song to a Spotify URI with Spotify search first.',
+        description: 'Play an exact Spotify URI on the single Home Assistant Spotify player and its current connected device. For natural-language track requests, use home_assistant_play_spotify_track.',
         inputSchema: zodToJsonSchemaObject({
           spotify_uri: {
             type: 'string',

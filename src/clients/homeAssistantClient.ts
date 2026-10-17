@@ -42,6 +42,24 @@ export type MediaPlayerSummary = {
   last_updated?: string;
 };
 
+export type SpotifyTrackMatch = {
+  name: string;
+  artists: string[];
+  album?: string;
+  spotify_uri: string;
+  duration_ms?: number;
+  explicit?: boolean;
+  is_playable?: boolean;
+};
+
+type SpotifyPlusSearchResponse = {
+  service_response?: {
+    result?: {
+      items?: unknown[];
+    };
+  };
+};
+
 const MEDIA_PLAYER_FEATURE = {
   pause: 1,
   seek: 2,
@@ -102,6 +120,32 @@ export class HomeAssistantClient {
 
   async playSpotify(spotifyUri: string): Promise<Record<string, unknown>> {
     const player = await this.getDefaultSpotifyPlayer();
+    return this.playSpotifyOnPlayer(player, spotifyUri);
+  }
+
+  async searchSpotifyTracks(title: string, artist?: string, limit = 5): Promise<SpotifyTrackMatch[]> {
+    const player = await this.getDefaultSpotifyPlayer();
+    return this.searchSpotifyTracksOnPlayer(player, title, artist, limit);
+  }
+
+  async playSpotifyTrack(title: string, artist?: string): Promise<Record<string, unknown>> {
+    const player = await this.getDefaultSpotifyPlayer();
+    const matches = await this.searchSpotifyTracksOnPlayer(player, title, artist, 10);
+    const selected = selectSpotifyTrack(matches, title, artist);
+    const playback = await this.playSpotifyOnPlayer(player, selected.spotify_uri);
+
+    return {
+      ...playback,
+      matched_track: selected,
+      requested_title: title,
+      ...(artist ? { requested_artist: artist } : {}),
+    };
+  }
+
+  private async playSpotifyOnPlayer(
+    player: MediaPlayerSummary,
+    spotifyUri: string,
+  ): Promise<Record<string, unknown>> {
     assertCapability(player, 'play_media');
     const source = spotifySource(player);
 
@@ -127,6 +171,29 @@ export class HomeAssistantClient {
       media_content_type: mediaContentType,
       source: source.name,
     };
+  }
+
+  private async searchSpotifyTracksOnPlayer(
+    player: MediaPlayerSummary,
+    title: string,
+    artist: string | undefined,
+    limit: number,
+  ): Promise<SpotifyTrackMatch[]> {
+    const criteria = [title, artist].filter(Boolean).join(' ');
+    const response = await this.http.post<SpotifyPlusSearchResponse>(
+      '/api/services/spotifyplus/search_tracks?return_response',
+      {
+        entity_id: player.entity_id,
+        criteria,
+        limit_total: limit,
+      },
+    );
+    const items = response.service_response?.result?.items;
+    if (!Array.isArray(items)) {
+      throw new Error('SpotifyPlus search returned an unexpected response.');
+    }
+
+    return items.flatMap(sanitizeSpotifyTrack);
   }
 
   async controlMediaPlayer(
@@ -180,6 +247,66 @@ export class HomeAssistantClient {
   private callMediaPlayerService(service: string, data: Record<string, unknown>): Promise<unknown> {
     return this.http.post(`/api/services/media_player/${service}`, data);
   }
+}
+
+function sanitizeSpotifyTrack(value: unknown): SpotifyTrackMatch[] {
+  if (!isRecord(value)
+    || typeof value.name !== 'string'
+    || typeof value.uri !== 'string'
+    || !/^spotify:track:[A-Za-z0-9]+$/.test(value.uri)
+    || !Array.isArray(value.artists)) {
+    return [];
+  }
+  const artists = value.artists.flatMap((artist) => (
+    isRecord(artist) && typeof artist.name === 'string' ? [artist.name] : []
+  ));
+  if (artists.length === 0) {
+    return [];
+  }
+
+  const album = isRecord(value.album) && typeof value.album.name === 'string'
+    ? value.album.name
+    : undefined;
+  return [{
+    name: value.name,
+    artists,
+    ...(album ? { album } : {}),
+    spotify_uri: value.uri,
+    ...(typeof value.duration_ms === 'number' ? { duration_ms: value.duration_ms } : {}),
+    ...(typeof value.explicit === 'boolean' ? { explicit: value.explicit } : {}),
+    ...(typeof value.is_playable === 'boolean' ? { is_playable: value.is_playable } : {}),
+  }];
+}
+
+function selectSpotifyTrack(matches: SpotifyTrackMatch[], title: string, artist?: string): SpotifyTrackMatch {
+  const requestedTitle = normalizeSpotifyText(title);
+  const requestedArtist = artist ? normalizeSpotifyText(artist) : undefined;
+  const candidates = matches.filter((match) => (
+    match.is_playable !== false
+    && normalizedBaseTitle(match.name) === requestedTitle
+    && (!requestedArtist || match.artists.some((name) => normalizeSpotifyText(name) === requestedArtist))
+  ));
+  if (candidates.length === 0) {
+    const detail = artist ? ` by ${artist}` : '';
+    throw new Error(`No playable Spotify track confidently matched ${title}${detail}. Use home_assistant_search_spotify_tracks to review candidates.`);
+  }
+
+  return [...candidates].sort((left, right) => (
+    Number(normalizeSpotifyText(right.name) === requestedTitle)
+    - Number(normalizeSpotifyText(left.name) === requestedTitle)
+  ))[0];
+}
+
+function normalizedBaseTitle(value: string): string {
+  return normalizeSpotifyText(value.split(/\s(?:-|–|—)\s|\s*[([]/u, 1)[0]);
+}
+
+function normalizeSpotifyText(value: string): string {
+  return value.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function mediaPlayerSummary(state: HomeAssistantState): MediaPlayerSummary {

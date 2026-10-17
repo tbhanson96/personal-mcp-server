@@ -88,6 +88,8 @@ persistent-profile setup, evidence, and user-handoff boundaries.
 - `home_assistant_control_entity`
 - `home_assistant_set_temperature`
 - `home_assistant_get_media_players`
+- `home_assistant_search_spotify_tracks`
+- `home_assistant_play_spotify_track`
 - `home_assistant_play_spotify`
 - `home_assistant_control_media_player`
 - `homeserver_list_files`
