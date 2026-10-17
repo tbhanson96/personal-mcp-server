@@ -262,6 +262,59 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Call a Home Assistant service only when its domain, service, and entity_id are explicitly allowlisted. Currently permits climate.turn_on only for climate.tim_s_model_y_climate; locks, covers and garages, alarms, security devices, scripts, scenes, automations, and all other operations are denied.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "description": "Home Assistant service domain. The current allowlist accepts climate.",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9_]+$",
+            "type": "string"
+          },
+          "entity_id": {
+            "description": "Exact allowlisted entity_id. Currently climate.tim_s_model_y_climate only.",
+            "maxLength": 255,
+            "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+            "type": "string"
+          },
+          "service": {
+            "description": "Home Assistant service name. The current allowlist accepts turn_on only.",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9_]+$",
+            "type": "string"
+          },
+          "service_data": {
+            "additionalProperties": true,
+            "description": "Optional JSON service data. Target selectors such as entity_id, device_id, area_id, and target are forbidden here; use the top-level entity_id.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "domain",
+          "service",
+          "entity_id"
+        ],
+        "type": "object"
+      },
+      "name": "home_assistant_call_service",
+      "securitySchemes": [
+        {
+          "scopes": [
+            "mcp:control"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": "Call an Allowlisted Home Assistant Service"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
         "readOnlyHint": true
       },
       "description": "List sanitized media-player playback state, available Spotify Connect sources, and supported playback capabilities. Optionally return one media_player entity.",

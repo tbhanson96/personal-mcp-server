@@ -45,6 +45,15 @@ const examples = [
     arguments: { entity_id: 'climate.hallway_hallway', temperature_fahrenheit: 68 },
   },
   {
+    userRequest: 'Turn on the climate in Tim’s Model Y.',
+    preferredTool: 'home_assistant_call_service',
+    arguments: {
+      domain: 'climate',
+      service: 'turn_on',
+      entity_id: 'climate.tim_s_model_y_climate',
+    },
+  },
+  {
     userRequest: 'Play Moves Like Jagger by Maroon 5 on the living room Spotify player.',
     preferredTool: 'home_assistant_play_spotify_track',
     arguments: {
@@ -119,6 +128,18 @@ const metadataByToolName: Record<string, ToolMetadata> = {
     workflowNotes: [
       'Resolve the exact climate entity_id before changing it.',
       'temperature_fahrenheit is limited to 40–95 °F and is sent to Home Assistant with climate.set_temperature.',
+    ],
+    changesState: true,
+  },
+  home_assistant_call_service: {
+    category: 'home_assistant',
+    tags: ['home_assistant', 'service', 'climate', 'vehicle', 'device_control', 'allowlist'],
+    examples: ['Turn on climate.tim_s_model_y_climate with climate.turn_on.'],
+    relatedTools: ['home_assistant_get_state', 'home_assistant_get_states'],
+    workflowNotes: [
+      'This mutates a real device. Call it only when the user explicitly requests the action.',
+      'The server currently allows only climate.turn_on for climate.tim_s_model_y_climate and rejects every other service/entity combination before contacting Home Assistant.',
+      'Pass targeting only through entity_id; service_data cannot contain alternate target selectors.',
     ],
     changesState: true,
   },

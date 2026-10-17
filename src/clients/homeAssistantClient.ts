@@ -105,6 +105,28 @@ export class HomeAssistantClient {
     });
   }
 
+  async callService(
+    domain: string,
+    service: string,
+    entityId: string,
+    serviceData: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
+    await this.http.post(
+      `/api/services/${encodeURIComponent(domain)}/${encodeURIComponent(service)}`,
+      {
+        ...serviceData,
+        entity_id: entityId,
+      },
+    );
+
+    return {
+      success: true,
+      domain,
+      service,
+      entity_id: entityId,
+    };
+  }
+
   async setTemperature(entityId: string, temperatureFahrenheit: number): Promise<Record<string, unknown>> {
     await this.http.post('/api/services/climate/set_temperature', {
       entity_id: entityId,

@@ -52,7 +52,7 @@ export function createMcpServer(
       },
       instructions: [
         'Use these tools to inspect and operate personal local services.',
-        'Write tools are exposed as bounded semantic operations rather than raw API passthroughs.',
+        'Write tools are bounded semantic operations or service calls guarded by an explicit server-side operation and entity allowlist.',
         'If a service is not configured, its tools return a configuration error instead of failing registration.',
       ].join(' '),
     },

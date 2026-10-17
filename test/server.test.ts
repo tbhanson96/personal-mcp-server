@@ -26,6 +26,7 @@ describe('createToolDefinitions', () => {
       'home_assistant_get_state',
       'home_assistant_control_entity',
       'home_assistant_set_temperature',
+      'home_assistant_call_service',
       'home_assistant_get_media_players',
       'home_assistant_search_spotify_tracks',
       'home_assistant_play_spotify_track',
@@ -91,6 +92,7 @@ describe('createToolDefinitions', () => {
     const searchSpotify = tools.find((definition) => definition.tool.name === 'home_assistant_search_spotify_tracks');
     const playSpotifyTrack = tools.find((definition) => definition.tool.name === 'home_assistant_play_spotify_track');
     const setTemperature = tools.find((definition) => definition.tool.name === 'home_assistant_set_temperature');
+    const callService = tools.find((definition) => definition.tool.name === 'home_assistant_call_service');
     const playSpotify = tools.find((definition) => definition.tool.name === 'home_assistant_play_spotify');
     const controlPlayer = tools.find((definition) => definition.tool.name === 'home_assistant_control_media_player');
 
@@ -100,11 +102,19 @@ describe('createToolDefinitions', () => {
     expect(searchSpotify && securityScopesForTool(searchSpotify)).toEqual(['mcp:read']);
     expect(playSpotifyTrack && securityScopesForTool(playSpotifyTrack)).toEqual(['mcp:control']);
     expect(setTemperature && securityScopesForTool(setTemperature)).toEqual(['mcp:control']);
+    expect(callService && securityScopesForTool(callService)).toEqual(['mcp:control']);
     expect(playSpotify && securityScopesForTool(playSpotify)).toEqual(['mcp:control']);
     expect(controlPlayer && securityScopesForTool(controlPlayer)).toEqual(['mcp:control']);
   });
 
-  it('returns an OAuth scope-upgrade challenge for a control tool called with read-only access', async () => {
+  it.each([
+    ['home_assistant_set_temperature', { entity_id: 'climate.hallway_hallway', temperature_fahrenheit: 68 }],
+    ['home_assistant_call_service', {
+      domain: 'climate',
+      service: 'turn_on',
+      entity_id: 'climate.tim_s_model_y_climate',
+    }],
+  ])('returns an OAuth scope-upgrade challenge when %s is called with read-only access', async (toolName, args) => {
     const config: AppConfig = {
       ...baseConfig,
       publicUrl: 'https://mcp.example.com/mcp',
@@ -123,8 +133,8 @@ describe('createToolDefinitions', () => {
     await client.connect(clientTransport);
     try {
       const result = await client.callTool({
-        name: 'home_assistant_set_temperature',
-        arguments: { entity_id: 'climate.hallway_hallway', temperature_fahrenheit: 68 },
+        name: toolName,
+        arguments: args,
       });
 
       expect(result.isError).toBe(true);
@@ -171,6 +181,7 @@ describe('createToolDefinitions', () => {
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_play_spotify_track');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_search_spotify_tracks');
       expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_set_temperature');
+      expect(payload.tools.map((tool: { name: string }) => tool.name)).toContain('home_assistant_call_service');
     }
   });
 

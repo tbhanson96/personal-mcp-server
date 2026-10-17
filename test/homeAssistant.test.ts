@@ -78,6 +78,68 @@ describe('Home Assistant tools', () => {
     })).rejects.toThrow('POST /api/services/climate/set_temperature failed: 500');
   });
 
+  it('calls the explicitly allowlisted Model Y climate service through the Home Assistant stub', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+    const tool = toolNamed(baseUrl, 'home_assistant_call_service');
+
+    const result = await tool.execute({
+      domain: 'climate',
+      service: 'turn_on',
+      entity_id: 'climate.tim_s_model_y_climate',
+      service_data: {},
+    });
+
+    expect(resultJson(result)).toEqual({
+      success: true,
+      domain: 'climate',
+      service: 'turn_on',
+      entity_id: 'climate.tim_s_model_y_climate',
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        url: '/api/services/climate/turn_on',
+        authorization: 'Bearer ha-secret',
+        body: { entity_id: 'climate.tim_s_model_y_climate' },
+      }),
+    ]);
+  });
+
+  it.each([
+    ['lock', 'unlock', 'lock.front_door'],
+    ['cover', 'open_cover', 'cover.garage_door'],
+    ['alarm_control_panel', 'alarm_disarm', 'alarm_control_panel.home'],
+    ['script', 'turn_on', 'script.disable_security'],
+    ['climate', 'turn_on', 'climate.some_other_vehicle'],
+  ])('denies non-allowlisted %s.%s calls before any network request', async (domain, service, entity_id) => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+    const tool = toolNamed(baseUrl, 'home_assistant_call_service');
+
+    await expect(tool.execute({ domain, service, entity_id })).rejects.toThrow('not allowed by policy');
+    expect(requests).toEqual([]);
+  });
+
+  it('rejects alternate targets and non-JSON service data before any network request', async () => {
+    const { baseUrl, requests } = await startHomeAssistantStub(servers, []);
+    const tool = toolNamed(baseUrl, 'home_assistant_call_service');
+    const baseArgs = {
+      domain: 'climate',
+      service: 'turn_on',
+      entity_id: 'climate.tim_s_model_y_climate',
+    };
+
+    await expect(tool.execute({
+      ...baseArgs,
+      service_data: { entity_id: 'climate.some_other_vehicle' },
+    })).rejects.toThrow('must not be supplied in service_data');
+    await expect(tool.execute({
+      ...baseArgs,
+      service_data: { invalid: Number.POSITIVE_INFINITY },
+    })).rejects.toThrow('JSON-compatible');
+
+    expect(requests).toEqual([]);
+  });
+
   it('returns sanitized playback state and capability flags', async () => {
     const { baseUrl, requests } = await startHomeAssistantStub(servers, [
       {
@@ -350,13 +412,13 @@ describe('Home Assistant tools', () => {
 
   it('requires control scope and never accepts credentials in tool arguments', () => {
     const tools = homeAssistantTools({ baseUrl: 'http://ha.invalid', token: 'server-side-only' });
-    for (const name of ['home_assistant_set_temperature', 'home_assistant_play_spotify_track', 'home_assistant_play_spotify', 'home_assistant_control_media_player']) {
+    for (const name of ['home_assistant_set_temperature', 'home_assistant_call_service', 'home_assistant_play_spotify_track', 'home_assistant_play_spotify', 'home_assistant_control_media_player']) {
       const tool = tools.find((candidate) => candidate.tool.name === name);
       expect(tool?.securityScopes).toEqual([MCP_CONTROL_SCOPE]);
       expect(tool?.tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
       expect(tool?.tool.inputSchema.properties).not.toHaveProperty('token');
       expect(tool?.tool.inputSchema.properties).not.toHaveProperty('password');
-      if (name !== 'home_assistant_set_temperature') {
+      if (!['home_assistant_set_temperature', 'home_assistant_call_service'].includes(name)) {
         expect(tool?.tool.inputSchema.properties).not.toHaveProperty('entity_id');
         expect(tool?.tool.inputSchema.properties).not.toHaveProperty('source');
       }

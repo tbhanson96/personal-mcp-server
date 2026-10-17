@@ -5,10 +5,47 @@ import { HomeAssistantClient } from '../clients/homeAssistantClient.js';
 import { EmptyArgsSchema, parseArgs, zodToJsonSchemaObject } from '../schemas/common.js';
 import { disabledResult, jsonResult, ToolDefinition } from './types.js';
 import { z } from 'zod';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 
 const StateArgsSchema = z.object({
   entity_id: z.string().min(1),
 });
+
+const HOME_ASSISTANT_NAME_PATTERN = /^[a-z0-9_]+$/;
+const HOME_ASSISTANT_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/;
+const MAX_SERVICE_DATA_BYTES = 16 * 1024;
+
+const ServiceDataSchema = z.record(z.string(), z.unknown())
+  .refine(isJsonObject, 'service_data must contain only JSON-compatible values.')
+  .refine(
+    hasAllowedJsonSize,
+    `service_data must not exceed ${MAX_SERVICE_DATA_BYTES} bytes.`,
+  )
+  .superRefine((value, context) => {
+    for (const key of ['entity_id', 'device_id', 'area_id', 'target']) {
+      if (Object.hasOwn(value, key)) {
+        context.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `${key} must not be supplied in service_data; use the top-level entity_id.`,
+        });
+      }
+    }
+  });
+
+const CallServiceArgsSchema = z.object({
+  domain: z.string().trim().min(1).max(64).regex(HOME_ASSISTANT_NAME_PATTERN),
+  service: z.string().trim().min(1).max(64).regex(HOME_ASSISTANT_NAME_PATTERN),
+  entity_id: z.string().trim().max(255).regex(
+    HOME_ASSISTANT_ENTITY_ID_PATTERN,
+    'Expected a Home Assistant entity_id such as climate.tim_s_model_y_climate',
+  ),
+  service_data: ServiceDataSchema.optional(),
+});
+
+const CALL_SERVICE_ALLOWLIST = new Map<string, ReadonlySet<string>>([
+  ['climate.turn_on', new Set(['climate.tim_s_model_y_climate'])],
+]);
 
 const MIN_THERMOSTAT_TEMPERATURE_FAHRENHEIT = 40;
 const MAX_THERMOSTAT_TEMPERATURE_FAHRENHEIT = 95;
@@ -190,6 +227,52 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
     },
     {
       tool: {
+        name: 'home_assistant_call_service',
+        title: 'Call an Allowlisted Home Assistant Service',
+        description: 'Call a Home Assistant service only when its domain, service, and entity_id are explicitly allowlisted. Currently permits climate.turn_on only for climate.tim_s_model_y_climate; locks, covers and garages, alarms, security devices, scripts, scenes, automations, and all other operations are denied.',
+        inputSchema: zodToJsonSchemaObject({
+          domain: {
+            type: 'string',
+            pattern: '^[a-z0-9_]+$',
+            maxLength: 64,
+            description: 'Home Assistant service domain. The current allowlist accepts climate.',
+          },
+          service: {
+            type: 'string',
+            pattern: '^[a-z0-9_]+$',
+            maxLength: 64,
+            description: 'Home Assistant service name. The current allowlist accepts turn_on only.',
+          },
+          entity_id: {
+            type: 'string',
+            pattern: '^[a-z0-9_]+\\.[a-z0-9_]+$',
+            maxLength: 255,
+            description: 'Exact allowlisted entity_id. Currently climate.tim_s_model_y_climate only.',
+          },
+          service_data: {
+            type: 'object',
+            description: 'Optional JSON service data. Target selectors such as entity_id, device_id, area_id, and target are forbidden here; use the top-level entity_id.',
+            additionalProperties: true,
+          },
+        }, ['domain', 'service', 'entity_id']),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      },
+      securityScopes: [MCP_CONTROL_SCOPE],
+      execute: async (args) => {
+        const parsed = parseArgs(CallServiceArgsSchema, args);
+        assertAllowedServiceCall(parsed.domain, parsed.service, parsed.entity_id);
+        return client
+          ? jsonResult(await client.callService(
+            parsed.domain,
+            parsed.service,
+            parsed.entity_id,
+            parsed.service_data,
+          ))
+          : disabledResult('Home Assistant');
+      },
+    },
+    {
+      tool: {
         name: 'home_assistant_get_media_players',
         title: 'Get Home Assistant Media Players',
         description: 'List sanitized media-player playback state, available Spotify Connect sources, and supported playback capabilities. Optionally return one media_player entity.',
@@ -328,4 +411,43 @@ export function homeAssistantTools(config?: ServiceConfig): ToolDefinition[] {
       },
     },
   ];
+}
+
+function assertAllowedServiceCall(domain: string, service: string, entityId: string): void {
+  const operation = `${domain}.${service}`;
+  const allowedEntities = CALL_SERVICE_ALLOWLIST.get(operation);
+  if (!allowedEntities?.has(entityId)) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Home Assistant service call is not allowed by policy: ${operation} for ${entityId}`,
+    );
+  }
+}
+
+function isJsonObject(value: Record<string, unknown>): boolean {
+  return isJsonValue(value, new Set(), 0);
+}
+
+function hasAllowedJsonSize(value: Record<string, unknown>): boolean {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8') <= MAX_SERVICE_DATA_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+function isJsonValue(value: unknown, ancestors: Set<object>, depth: number): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (depth >= 10 || typeof value !== 'object') return false;
+  if (ancestors.has(value)) return false;
+
+  const nextAncestors = new Set(ancestors).add(value);
+  if (Array.isArray(value)) {
+    return value.every((entry) => isJsonValue(entry, nextAncestors, depth + 1));
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  return Object.values(value).every((entry) => isJsonValue(entry, nextAncestors, depth + 1));
 }

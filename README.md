@@ -6,7 +6,10 @@ It can also control the host Happy daemon through a restricted Unix-socket
 bridge. The container never receives `~/.happy`, Happy credentials, the Docker
 socket, or host process access.
 
-State-changing tools are bounded semantic operations with explicit MCP annotations and service-level allowlists; the server does not expose raw service-call tools.
+State-changing tools are bounded semantic operations with explicit MCP annotations
+and service-level allowlists. The generic-shaped Home Assistant service tool is
+not a raw passthrough: every domain, service, and entity combination is denied
+unless it appears in the server-side allowlist.
 
 ## Development
 
@@ -87,6 +90,7 @@ persistent-profile setup, evidence, and user-handoff boundaries.
 - `home_assistant_get_state`
 - `home_assistant_control_entity`
 - `home_assistant_set_temperature`
+- `home_assistant_call_service`
 - `home_assistant_get_media_players`
 - `home_assistant_search_spotify_tracks`
 - `home_assistant_play_spotify_track`
@@ -116,6 +120,8 @@ See [Spotify playback through Home Assistant](docs/spotify-playback.md) for the
 tool workflow, security model, supported actions, and device limitations.
 See [Thermostat control through Home Assistant](docs/thermostat-control.md) for
 setpoint validation, authorization, and safe testing guidance.
+See [Allowlisted Home Assistant service calls](docs/home-assistant-call-service.md)
+for the service-call policy, supported operation, and safe extension guidance.
 
 ## Happy bridge
 
