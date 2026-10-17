@@ -69,6 +69,17 @@ immutable `sha-<commit>` image, restarts the service, checks `/health`, verifies
 the running OCI revision, and attempts to restore the previous image digest if
 verification fails. It never invokes an MCP state-changing tool.
 
+The helper also compares deterministic before/after manifests of the
+advertised MCP tools after deployment verification. It skips ChatGPT when tool
+metadata is unchanged. To opt into browser refresh when metadata changed, use:
+
+```sh
+deploy/deploy-host.sh <full-commit-sha> --refresh-chatgpt
+```
+
+See [ChatGPT plugin metadata refresh](docs/chatgpt-plugin-refresh.md) for the
+persistent-profile setup, evidence, and user-handoff boundaries.
+
 ## Tools
 
 - `home_assistant_get_config`

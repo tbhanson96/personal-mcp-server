@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refresh ChatGPT Plugin"
+  short_description: "Refresh deployed MCP tool metadata safely"
+  default_prompt: "Use $chatgpt-plugin-refresh after a verified deployment to refresh changed Personal MCP tools in ChatGPT."

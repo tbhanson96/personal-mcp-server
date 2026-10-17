@@ -18,6 +18,12 @@
 - Verify the user service, `/health`, the running image revision, and the
   requested feature after deployment. Feature verification must be read-only
   unless the request explicitly authorizes a state change.
+- After those deployment checks, compare the advertised tool schema manifests.
+  If they differ, use `$chatgpt-plugin-refresh` or the deploy helper's explicit
+  `--refresh-chatgpt` option. Browser refresh is opt-in and must stop for login,
+  CAPTCHA, MFA, permission changes, or confirmation. If schemas are unchanged,
+  record that ChatGPT refresh was skipped. If refreshed, verify added tools and
+  report that affected tests require a new conversation.
 - Stop and ask before destructive operations, credential or secret changes,
   irreversible data changes, live Home Assistant mutations, uncertain service
   targets, force pushes, history rewrites, or a deployment whose rollback path

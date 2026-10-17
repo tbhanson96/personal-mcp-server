@@ -15,6 +15,9 @@ import { happyTools } from './tools/happy.js';
 import { mealieTools } from './tools/mealie.js';
 import { ToolDefinition } from './tools/types.js';
 import { vikunjaTools } from './tools/vikunja.js';
+import { advertisedTools, securityScopesForTool } from './toolSchemaManifest.js';
+
+export { securityScopesForTool } from './toolSchemaManifest.js';
 
 export function createToolDefinitions(config: AppConfig): ToolDefinition[] {
   const serviceTools = [
@@ -56,13 +59,7 @@ export function createMcpServer(
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const returnedTools = tools.map((definition) => ({
-      ...definition.tool,
-      securitySchemes: [{
-        type: 'oauth2',
-        scopes: securityScopesForTool(definition),
-      }],
-    }));
+    const returnedTools = advertisedTools(tools);
 
     logInfo('mcp.tools.list.returned', {
       count: returnedTools.length,
@@ -123,8 +120,4 @@ export function createMcpServer(
   });
 
   return server;
-}
-
-export function securityScopesForTool(definition: ToolDefinition): string[] {
-  return definition.securityScopes ?? [MCP_READ_SCOPE];
 }

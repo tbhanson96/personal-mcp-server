@@ -65,5 +65,8 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify tool schema manifest
+        run: npm run tools:manifest:check
+
       - name: Audit
         run: npm audit --omit=dev
